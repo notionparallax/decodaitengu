@@ -2,7 +2,7 @@ import sys
 import os.path
 import sphinx_rtd_theme
 
-import decotengu
+import decodaitengu
 
 sys.path.append(os.path.abspath('.'))
 sys.path.append(os.path.abspath('doc'))
@@ -11,15 +11,15 @@ extensions = [
     'sphinx.ext.autodoc', 'sphinx.ext.autosummary', 'sphinx.ext.doctest',
     'sphinx.ext.todo', 'sphinx.ext.viewcode', 'sphinx.ext.mathjax'
 ]
-project = 'decotengu'
+project = 'decodaitengu'
 source_suffix = '.rst'
 master_doc = 'index'
 
-version = release = decotengu.__version__
-copyright = 'DecoTengu Team'
+version = release = decodaitengu.__version__
+copyright = 'DecoDaiTengu Team'
 
-epub_basename = 'decotengu - {}'.format(version)
-epub_author = 'DecoTengu Team'
+epub_basename = 'decodaitengu - {}'.format(version)
+epub_author = 'DecoDaiTengu Team'
 
 todo_include_todos = True
 

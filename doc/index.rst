@@ -1,30 +1,27 @@
 .. rst-class:: align-center
 
-`NEWS <https://freecode.com/projects/decotengu/announcements>`_
-| `DOWNLOAD <http://pypi.python.org/pypi/decotengu>`_
-| `MAILING LIST <https://lists.nongnu.org/mailman/listinfo/decotengu-devel>`_
-| `BUGS <http://savannah.nongnu.org/bugs/?group=decotengu>`_
-| `SOURCE CODE <http://git.savannah.gnu.org/cgit/decotengu.git>`_
+`SOURCE CODE <https://github.com/notionparallax/decodaitengu>`_
+| `ISSUES <https://github.com/notionparallax/decodaitengu/issues>`_
 
-DecoTengu
-=========
+DecoDaiTengu
+============
 
-DecoTengu is Python dive decompression library to experiment with various
-implementations of Buhlmann decompression model with Erik Baker's gradient
-factors (other decompression models might be possible in the future).
+DecoDaiTengu is a Python dive decompression library implementing the
+Bühlmann ZH-L16B/C decompression model with Erik Baker's gradient factors.
+It is a modernised fork of the original DecoTengu library (v0.14.1, 2018).
 
-.. Basic
-.. implementation of the decompression model is provided and its different
-.. parts can be replaced with different code routines.
+Key features:
 
-The results of DecoTengu calculations are decompression stops and tissue
-saturation information. Third party applications can use those results for
-data analysis purposes or dive planning functionality.
+- ZH-L16B-GF and ZH-L16C-GF models with full helium compartment support
+- Gradient factor configuration (GF low/high)
+- CNS and OTU oxygen toxicity tracking
+- High-level ``plan_dive()`` API for common dive planning
+- Type-annotated, Python 3.10+ codebase
+- Gas mix support: air, nitrox, trimix
 
-The DecoTengu library is licensed under terms of GPL license, version 3, see
-`COPYING <http://git.savannah.gnu.org/cgit/decotengu.git/plain/COPYING>`_
-file for details. As stated in the license, there is no warranty, so any
-diving while using data provided by the library is on diver's own risk.
+The DecoDaiTengu library is licensed under GPL-3.0. As stated in the
+license, there is no warranty — any diving using data provided by the
+library is at the diver's own risk.
 
 Table of Contents
 -----------------

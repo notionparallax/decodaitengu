@@ -1,32 +1,86 @@
-(*a fork of*) `DecoTengu` 
-=========
-[NEWS](https://freecode.com/projects/decotengu/announcements)
-[DOWNLOAD](http://pypi.python.org/pypi/decotengu)
-[MAILING LIST](https://lists.nongnu.org/mailman/listinfo/decotengu-devel)
-[BUGS](http://savannah.nongnu.org/bugs/?group=decotengu)
-[SOURCE CODE](http://git.savannah.gnu.org/cgit/decotengu.git)
+# DecoDaiTengu
 
->DecoTengu is Python dive decompression library to experiment with various
-implementations of the [Buhlmann decompression model](https://en.wikipedia.org/wiki/Bühlmann_decompression_algorithm) with Erik Baker's gradient
-factors (other decompression models might be possible in the future).
+A modern Python dive decompression library implementing the Bühlmann ZH-L16B/C
+decompression model with Erik Baker's gradient factors.
 
->The results of DecoTengu calculations are decompression stops and tissue
-saturation information. Third party applications can use those results for
-data analysis purposes or dive planning functionality.
+This is a modernised fork of the original [DecoTengu](http://git.savannah.gnu.org/cgit/decotengu.git)
+library (v0.14.1, 2018) by Artur Wroblewski.
 
->The DecoTengu library is licensed under terms of GPL license, version 3, see
-[COPYING](http://git.savannah.gnu.org/cgit/decotengu.git/plain/COPYING)
-file for details. As stated in the license, there is no warranty, so any
-diving while using data provided by the library is on diver's own risk.
+## Features
 
-### *Note about this fork*
-*Aug. 3, 2016*
-This repository is simply a fork of the original repo, which happens not to be on GitHub.
-Since the code is GPL licensed, and since I like to mess with code, I forked it here.
-To see the original repository, go to the [source code](http://git.savannah.gnu.org/cgit/decotengu.git) link above.
-Please do not submit issues for the primary code base here-- instead contact the original author as instructed at the links above.
+- **ZH-L16B-GF and ZH-L16C-GF** models with full helium compartment support (trimix)
+- **Gradient factor** configuration (GF low/high)
+- **CNS and OTU** oxygen toxicity tracking
+- **High-level `plan_dive()` API** for common dive planning
+- **Type-annotated**, Python 3.10+ codebase
+- Gas mix support: air, nitrox, trimix
 
-My goal with this fork is simply to make some plots about diving to understand the physics of recreational diving better.
+## Quick Start
+
+```bash
+pip install decodaitengu
+```
+
+```python
+from decodaitengu import plan_dive, Gas
+
+# Simple air dive
+result = plan_dive(depth=35, bottom_time=40, gf=(30, 85))
+print(f"Runtime: {result.runtime} min")
+print(f"Deco stops: {[(s.depth, s.time) for s in result.stops]}")
+print(f"CNS: {result.cns_percent}%")
+
+# Trimix dive with deco gas
+result = plan_dive(
+    depth=60,
+    bottom_time=20,
+    back_gas=Gas(21, 35),
+    deco_gases=[Gas(50, 0, switch_depth=21), Gas(100, 0, switch_depth=6)],
+    gf=(30, 85),
+)
+print(f"Runtime: {result.runtime} min")
+```
+
+## Models
+
+```python
+from decodaitengu import plan_dive
+from decodaitengu.models import ZHL16C, ZHL16B
+
+# ZHL-16C is the default (recommended for dive computers)
+result = plan_dive(depth=40, bottom_time=25, model=ZHL16C)
+
+# ZHL-16B available for backward compatibility
+result = plan_dive(depth=40, bottom_time=25, model=ZHL16B)
+```
+
+## Legacy API
+
+The original DecoTengu API is still available for backward compatibility:
+
+```python
+import decodaitengu
+
+engine = decodaitengu.create()
+engine.add_gas(0, 21)
+profile = list(engine.calculate(35, 40))
+print(engine.deco_table.total)  # 44.0
+```
+
+## Development
+
+```bash
+pip install -e ".[dev]"
+pytest
+ruff check .
+```
+
+## License
+
+GPL-3.0-or-later. See [COPYING](COPYING) for details.
+
+**WARNING:** This software is provided as-is with no warranty. Any diving
+using data provided by this library is at the diver's own risk.
 
 Cheers,
 gully
