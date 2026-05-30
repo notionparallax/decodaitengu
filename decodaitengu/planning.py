@@ -107,7 +107,7 @@ def plan_dive(
     gf_high = gf[1] / 100.0 if gf[1] > 1.0 else gf[1]
 
     if model is None:
-        deco_model = ZHL16C(gf_low=gf_low, gf_high=gf_high)
+        deco_model: ZHL16GF = ZHL16C(gf_low=gf_low, gf_high=gf_high)
     elif isinstance(model, type):
         deco_model = model(gf_low=gf_low, gf_high=gf_high)
     else:

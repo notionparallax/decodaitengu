@@ -1,230 +1,107 @@
-#
-# DecoTengu - dive decompression library.
+# DecoDaiTengu - dive decompression library.
 #
 # Copyright (C) 2013-2014 by Artur Wroblewski <wrobell@pld-linux.org>
+# Copyright (C) 2024 Contributors
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
 
-"""
-Basic Usage
------------
+"""DecoDaiTengu - dive decompression library.
 
-The DecoDaiTengu dive decompression library exports its main API via the
-``decodaitengu`` module.
+A modern, typed Python library for Bühlmann ZH-L16B/C decompression
+calculations with gradient factors, CNS/OTU tracking, and trimix support.
 
-The calculation of dive profile and decompression table can be performed in
-few simple steps by using :func:`~decodaitengu.create` function, which creates
-:class:`DecoTengu engine <Engine>` and :class:`decompression table
-<DecoTable>` objects. Having DecoTengu engine object, we need to instruct
-it what gas mixes are used after which we can start calculations. The
-following example executes calculations for a dive to 35 meters for 40
-minutes on air::
+Quick start::
 
-    >>> import decodaitengu
-    >>> engine = decodaitengu.create()
-    >>> engine.add_gas(0, 21)
-    >>> profile = engine.calculate(35, 40)
+    from decodaitengu import plan_dive, Gas
 
-The :func:`DecoTengu engine calculation <Engine.calculate>` method returns
-an iterator with dive profile steps::
+    result = plan_dive(
+        depth=35,
+        bottom_time=40,
+        back_gas=Gas(21, 0),  # air
+        gf=(30, 85),
+    )
+    print(f"Runtime: {result.runtime:.0f} min")
+    print(f"Deco: {result.total_deco:.0f} min")
+    for stop in result.stops:
+        print(f"  {stop.depth:.0f}m for {stop.time:.0f} min")
 
-    >>> for step in profile:
-    ...     print(step)     # doctest:+ELLIPSIS
-    Step(phase="start", abs_p=1.0132, time=0.0000, gf=0.3000)
-    Step(phase="descent", abs_p=4.5080, time=1.7500, gf=0.3000)
-    Step(phase="const", abs_p=4.5080, time=40.0000, gf=0.3000)
-    ...
-    Step(phase="ascent", abs_p=1.9119, time=48.6000, gf=0.5750)
-    ...
-    Step(phase="ascent", abs_p=1.0133, time=87.5000, gf=0.8500)
+Trimix example::
 
-After dive profile iterator is fully exhausted, the dive table can be used
-to obtain all information about decompression stops::
+    from decodaitengu import plan_dive, Gas, ZHL16C
 
-    >>> for stop in engine.deco_table:
-    ...     print(stop)
-    DecoStop(depth=18.0, time=1.0)
-    DecoStop(depth=15.0, time=1.0)
-    DecoStop(depth=12.0, time=4.0)
-    DecoStop(depth=9.0, time=6.0)
-    DecoStop(depth=6.0, time=10.0)
-    DecoStop(depth=3.0, time=22.0)
-
-and total time of dive decompression obligations::
-
-    >>> engine.deco_table.total
-    44.0
-
-Configuring Decompression Model
--------------------------------
-The default decompression model used by DecoTengu library is Buhlmann's
-:class:`ZH-L16B <ZH_L16B>` model with gradient factors - ZH-L16B-GF::
-
-    >>> import decodaitengu
-    >>> engine = decodaitengu.create()
-    >>> engine.add_gas(0, 21)
-    >>> engine.model      # doctest:+ELLIPSIS
-    <decodaitengu.model.ZH_L16B_GF object at ...>
-    >>> engine.model.gf_low
-    0.3
-    >>> engine.model.gf_high
-    0.85
-
-We can switch to ZH-L16C-GF decompression model easily::
-
-    >>> engine.model = decodaitengu.ZH_L16C_GF()
-    >>> profile = engine.calculate(35, 40)
-    >>> list(profile)            # doctest:+ELLIPSIS
-    [Step...]
-    >>> engine.deco_table.total
-    52.0
-    >>> engine.deco_table[0]
-    DecoStop(depth=18.0, time=1.0)
-    >>> engine.deco_table[-1]
-    DecoStop(depth=3.0, time=26.0)
-
-Above, the total dive decompression time is longer due to ZH-L16C-GF being
-more conservative comparing to ZH-L16B-GF.
-
-Gradient factor parameters can be adjusted using ``gf_low`` and ``gf_high``
-attributes::
-
-    >>> engine.model      # doctest:+ELLIPSIS
-    <decodaitengu.model.ZH_L16C_GF object at ...>
-    >>> engine.model.gf_low = 0.2    # vs. 0.30 - first stop deeper
-    >>> engine.model.gf_high = 0.90  # vs. 0.85 - last stop shorter
-    >>> profile = engine.calculate(35, 40)
-    >>> list(profile)            # doctest:+ELLIPSIS
-    [Step...]
-    >>> engine.deco_table.total
-    48.0
-    >>> engine.deco_table[0]
-    DecoStop(depth=21.0, time=1.0)
-    >>> engine.deco_table[-1]
-    DecoStop(depth=3.0, time=24.0)
-
+    result = plan_dive(
+        depth=50,
+        bottom_time=25,
+        back_gas=Gas(21, 35),
+        deco_gases=[Gas(50, 0, switch_depth=21), Gas(100, 0, switch_depth=6)],
+        model=ZHL16C,
+        gf=(30, 85),
+    )
 """
 
-from .conveyor import Conveyor
-from .engine import DecoTable, Engine
-from .flow import sender
-from .model import ZH_L16B_GF, ZH_L16C_GF, DecoModelValidator
-
-__all__ = [
-    # Legacy API
-    "Conveyor",
-    "DecoTable",
-    "Engine",
-    "sender",
-    "ZH_L16B_GF",
-    "ZH_L16C_GF",
-    "DecoModelValidator",
-    # Modern API
-    "ZHL16B",
-    "ZHL16C",
-    "DecoModel",
-    "plan_dive",
-    "CNSMethod",
-    "CNSTracker",
-    "OTUTracker",
-    "Cylinder",
-    "DiveSummary",
-    "Gas",
-    "GasUsage",
-    "TissueState",
-    "DecoStopInfo",
-    "PhaseEnum",
-    "StepInfo",
-]
-
-# New modern API
 from .models import ZHL16B, ZHL16C, DecoModel
 from .planning import plan_dive
 from .tracking import CNSMethod, CNSTracker, OTUTracker
 from .types import (
     Cylinder,
+    DecoStop,
     DiveSummary,
     Gas,
     GasUsage,
+    Phase,
+    Step,
     TissueState,
-)
-from .types import (
-    DecoStop as DecoStopInfo,
-)
-from .types import (
-    Phase as PhaseEnum,
-)
-from .types import (
-    Step as StepInfo,
 )
 
 __version__ = "1.0.0"
 
-
-def create(time_delta=None, validate=True):
-    """
-    Create decompression engine (legacy API).
-
-    The decompression model validation is enabled by default.
-
-    Usage
-
-    >>> import decodaitengu
-    >>> engine = decodaitengu.create()
-    >>> engine.add_gas(0, 21)
-    >>> data = list(engine.calculate(35, 40))
-    >>> engine.deco_table.total
-    44.0
-
-    :param time_delta: Time between dive steps.
-    :param validate: Validate decompression data with decompression model
-                     validator.
-    """
-    engine = Engine()
-
-    pipeline = []
-    if validate:
-        pipeline.append(DecoModelValidator(engine))
-
-    if time_delta:
-        engine.calculate = Conveyor(engine, time_delta)
-    engine.calculate = sender(engine.calculate, *pipeline)
-
-    return engine
-
-
 __all__ = [
-    # Legacy API
-    "create",
-    "Engine",
-    "ZH_L16B_GF",
-    "ZH_L16C_GF",
-    # Modern API
     "plan_dive",
+    "Gas",
     "ZHL16B",
     "ZHL16C",
     "DecoModel",
-    "Gas",
     "Cylinder",
     "TissueState",
     "DiveSummary",
-    "DecoStopInfo",
-    "StepInfo",
-    "PhaseEnum",
+    "DecoStop",
+    "Step",
+    "Phase",
     "GasUsage",
     "CNSTracker",
     "CNSMethod",
     "OTUTracker",
+    # Legacy compat
+    "create",
 ]
+
+
+def create(*args: object, **kwargs: object) -> None:
+    """Legacy API stub — the old Engine-based API has been removed.
+
+    Raises RuntimeError with migration instructions.
+    """
+    raise RuntimeError(
+        "decodaitengu.create() is no longer available.\n"
+        "\n"
+        "The legacy Engine API from decotengu has been replaced with a simpler\n"
+        "functional API. To migrate:\n"
+        "\n"
+        "  OLD (decotengu):\n"
+        "    import decotengu\n"
+        "    engine = decotengu.create()\n"
+        "    engine.add_gas(0, 21)\n"
+        "    profile = engine.calculate(35, 40)\n"
+        "    list(profile)\n"
+        "    print(engine.deco_table.total)\n"
+        "\n"
+        "  NEW (decodaitengu):\n"
+        "    from decodaitengu import plan_dive, Gas\n"
+        "    result = plan_dive(depth=35, bottom_time=40, back_gas=Gas(21, 0))\n"
+        "    print(result.total_deco)\n"
+        "\n"
+        "See README.md or https://github.com/notionparallax/decodaitengu for full docs."
+    )

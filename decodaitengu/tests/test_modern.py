@@ -40,7 +40,7 @@ class TestGas:
     def test_frozen(self):
         gas = Gas(o2=21)
         with pytest.raises(AttributeError):
-            gas.o2 = 32  # type: ignore
+            gas.o2 = 32
 
 
 class TestCylinder:
@@ -298,3 +298,6 @@ class TestPlanDive:
         # 6m last stop means shallowest stop is 6m
         if result_6m.stops:
             assert result_6m.stops[-1].depth >= 6.0
+        # 3m last stop allows shallower stops
+        if result_3m.stops:
+            assert result_3m.stops[-1].depth >= 3.0
