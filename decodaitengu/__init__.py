@@ -122,6 +122,33 @@ from .engine import DecoTable, Engine
 from .flow import sender
 from .model import ZH_L16B_GF, ZH_L16C_GF, DecoModelValidator
 
+__all__ = [
+    # Legacy API
+    "Conveyor",
+    "DecoTable",
+    "Engine",
+    "sender",
+    "ZH_L16B_GF",
+    "ZH_L16C_GF",
+    "DecoModelValidator",
+    # Modern API
+    "ZHL16B",
+    "ZHL16C",
+    "DecoModel",
+    "plan_dive",
+    "CNSMethod",
+    "CNSTracker",
+    "OTUTracker",
+    "Cylinder",
+    "DiveSummary",
+    "Gas",
+    "GasUsage",
+    "TissueState",
+    "DecoStopInfo",
+    "PhaseEnum",
+    "StepInfo",
+]
+
 # New modern API
 from .models import ZHL16B, ZHL16C, DecoModel
 from .planning import plan_dive

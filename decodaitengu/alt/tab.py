@@ -179,7 +179,11 @@ class TabExp:
         """
         kt_exp = {}
         for k in k_const:
-            exp = lambda t: EXP(-k * t)
+            _k = k  # bind loop variable for closure
+
+            def exp(t, _k=_k):
+                return EXP(-_k * t)
+
             kt_exp[k] = {
                 6: exp(TIME_6S),  # 1m at 10m/min
                 60: exp(1),  # 10m at 10m/min

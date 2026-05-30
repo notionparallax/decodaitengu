@@ -399,7 +399,8 @@ class Engine:
         step = start
 
         stages = self._free_ascent_stages(gas_list)
-        for step in self._free_staged_ascent(step, stages):
+        for s in self._free_staged_ascent(step, stages):
+            step = s
             yield step
 
         # we should not arrive at the surface - it is non-ndl dive at this
@@ -542,8 +543,11 @@ class Engine:
         :param end_abs_p: Absolute pressure of destination depth.
         :param gas_list: List of gas mixes - travel and bottom gas mixes.
         """
-        mixes = zip(gas_list[:-1], gas_list[1:])
-        _pressure = lambda mix: self._to_pressure(mix.depth)
+        mixes = zip(gas_list[:-1], gas_list[1:], strict=False)
+
+        def _pressure(mix):
+            return self._to_pressure(mix.depth)
+
         yield from ((_pressure(m2), m1) for m1, m2 in mixes)
         last = gas_list[-1]
         if abs(_pressure(last) - end_abs_p) > 0:
@@ -569,8 +573,11 @@ class Engine:
         :param gas_list: List of gas mixes - bottom and decompression gas
             mixes.
         """
-        mixes = zip(gas_list[:-1], gas_list[1:])
-        _pressure = lambda mix: self._to_pressure(((mix.depth - 1) // 3 + 1) * 3)
+        mixes = zip(gas_list[:-1], gas_list[1:], strict=False)
+
+        def _pressure(mix):
+            return self._to_pressure(((mix.depth - 1) // 3 + 1) * 3)
+
         yield from ((_pressure(m2), m1) for m1, m2 in mixes)
         yield (self.surface_pressure, gas_list[-1])
 
@@ -599,8 +606,11 @@ class Engine:
         :param start_abs_p: Absolute pressure of decompression start depth.
         """
         assert start_abs_p > self.surface_pressure
-        mixes = zip(gas_list[:-1], gas_list[1:])
-        _pressure = lambda mix: self._to_pressure(mix.depth // 3 * 3)
+        mixes = zip(gas_list[:-1], gas_list[1:], strict=False)
+
+        def _pressure(mix):
+            return self._to_pressure(mix.depth // 3 * 3)
+
         yield from (
             (_pressure(m2), m1) for m1, m2 in mixes if self._to_pressure(m2.depth) < start_abs_p
         )
@@ -743,16 +753,17 @@ class Engine:
         .. seealso:: :func:`decotengu.Engine._ascent_stages_deco`
         """
         if __debug__:
-            depth = self._to_depth(start.abs_p)
-            assert depth % 3 == 0 and depth > 0, depth
+            _depth = self._to_depth(start.abs_p)
+            assert _depth % 3 == 0 and _depth > 0, _depth
 
         bottom_gas = self._gas_list[0]
         stages = self._deco_stops(start, stages)
         step = start
-        for depth, gas, time, gf in stages:
+        for _depth, gas, time, gf in stages:
             # switch gas
             if step.abs_p >= self._to_pressure(gas.depth) and gas != bottom_gas:
-                for step in self._ascent_switch_gas(step, gas):
+                for s in self._ascent_switch_gas(step, gas):
+                    step = s
                     yield step
 
             # execute deco stop
@@ -835,13 +846,17 @@ class Engine:
             return Step(Phase.DECO_STOP, step.abs_p, step.time + const.MINUTE, gas, data)
 
         max_time = self._deco_stop_search_time
+
         # next_f(arg=(time, data)): (time, data) <- track both time and deco
         # data
-        next_f = lambda time, data: (
-            time + max_time,
-            self._tissue_pressure_const(step.abs_p, max_time, gas, data),
-        )
-        inv_f = lambda time, data: not self._can_ascend(step.abs_p, next_time, data, gf)
+        def next_f(time, data):
+            return (
+                time + max_time,
+                self._tissue_pressure_const(step.abs_p, max_time, gas, data),
+            )
+
+        def inv_f(time, data):
+            return not self._can_ascend(step.abs_p, next_time, data, gf)
 
         time, data = recurse_while(inv_f, next_f, const.MINUTE, data)
 
@@ -851,9 +866,12 @@ class Engine:
 
         # start with `data` returned by `recurse_while`, so no need to add
         # `time`
-        next_f = lambda k: self._tissue_pressure_const(step.abs_p, k, gas, data)
+        def _tissue_at(k):
+            return self._tissue_pressure_const(step.abs_p, k, gas, data)
+
         # should we stay at deco stop?
-        exec_deco_stop = lambda k: not self._can_ascend(step.abs_p, next_time, next_f(k), gf)
+        def exec_deco_stop(k):
+            return not self._can_ascend(step.abs_p, next_time, _tissue_at(k), gf)
 
         # ascent is possible after self._deco_stop_search_time, so
         # check for self._deco_stop_search_time - 1

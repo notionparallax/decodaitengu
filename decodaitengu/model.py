@@ -594,7 +594,7 @@ class ZH_L16_GF:
             gf = self.gf_low
         assert gf > 0 and gf <= 1.5
 
-        data = zip(data.tissues, self.N2_A, self.N2_B, self.HE_A, self.HE_B)
+        data = zip(data.tissues, self.N2_A, self.N2_B, self.HE_A, self.HE_B, strict=False)
         return tuple(
             eq_gf_limit(gf, p_n2, p_he, n2_a, n2_b, he_a, he_b)
             for (p_n2, p_he), n2_a, n2_b, he_a, he_b in data

@@ -844,13 +844,13 @@ class EngineDiveAscentTestCase(unittest.TestCase):
         stops = list(self.engine._deco_stops(step, stages))
         self.assertEqual(6, len(stops))
 
-        stops = list(zip(*stops))
+        stops = list(zip(*stops, strict=False))
         self.assertEqual((2.2,) * 2 + (1.0,) * 4, stops[0])
         self.assertEqual((AIR,) * 2 + (gas_mix,) * 4, stops[1])
         self.assertEqual((0.3,) * 6, stops[2])
 
         gfv = stops[3]
-        diff = [round(v2 - v1, 2) for v1, v2 in zip(gfv[:-1], gfv[1:])]
+        diff = [round(v2 - v1, 2) for v1, v2 in zip(gfv[:-1], gfv[1:], strict=False)]
         self.assertEqual([0.1] * 5, diff)
 
     def test_deco_stops_6m(self):
@@ -873,13 +873,13 @@ class EngineDiveAscentTestCase(unittest.TestCase):
         stops = list(self.engine._deco_stops(step, stages))
         self.assertEqual(5, len(stops))
 
-        stops = list(zip(*stops))
+        stops = list(zip(*stops, strict=False))
         self.assertEqual((2.2,) * 2 + (1.0,) * 3, stops[0])
         self.assertEqual((AIR,) * 2 + (gas_mix,) * 3, stops[1])
         self.assertEqual((0.3,) * 4 + (0.6,), stops[2])
 
         gfv = stops[3]
-        diff = [round(v2 - v1, 2) for v1, v2 in zip(gfv[:-1], gfv[1:])]
+        diff = [round(v2 - v1, 2) for v1, v2 in zip(gfv[:-1], gfv[1:], strict=False)]
         self.assertEqual([0.1] * 3 + [0.2], diff)
 
     @mock.patch("decodaitengu.engine.recurse_while")

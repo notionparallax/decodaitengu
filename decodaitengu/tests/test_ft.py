@@ -31,8 +31,13 @@ class RecurseWhileTestCase(unittest.TestCase):
         """
         Test recurse function
         """
-        f = lambda a: a + 1
-        p = lambda a: a < 5
+
+        def f(a):
+            return a + 1
+
+        def p(a):
+            return a < 5
+
         v = recurse_while(p, f, 3)
         self.assertEqual(4, v)
 
@@ -40,8 +45,13 @@ class RecurseWhileTestCase(unittest.TestCase):
         """
         Test recurse function with no f execution
         """
-        f = lambda a: a + 1
-        p = lambda a: a < 5
+
+        def f(a):
+            return a + 1
+
+        def p(a):
+            return a < 5
+
         v = recurse_while(p, f, 5)
         self.assertEqual(5, v)
 

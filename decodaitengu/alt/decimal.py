@@ -195,10 +195,7 @@ class DecimalContext:
             value = getattr(obj, attr)
             data[attr] = value
 
-            if scalar:
-                value = self.type(value)
-            else:
-                value = type(value)(self.type(v) for v in value)
+            value = self.type(value) if scalar else type(value)(self.type(v) for v in value)
             setattr(obj, attr, value)
 
     def _undo(self, obj, data):

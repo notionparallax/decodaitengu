@@ -102,7 +102,7 @@ class AscentJumper:
         step = start
         minute = const.MINUTE
         dp = engine._time_to_pressure(minute, ascent_rate)
-        for i in range(start.time, end_time, minute):
+        for _i in range(start.time, end_time, minute):
             abs_p = step.abs_p - dp  # jump
             data = model.load(abs_p, minute, gas, 0, step.data)
             step = Step(Phase.DECO_STOP, abs_p, step.time + minute, gas, data)

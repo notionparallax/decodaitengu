@@ -36,11 +36,11 @@ def recurse_while(predicate, f, *args):
     :param *args: Starting arguments.
     """
     result = f(*args)
-    result = result if type(result) == tuple else (result,)
+    result = result if isinstance(result, tuple) else (result,)
     while predicate(*result):
         args = result  # predicate(args) is always true
         result = f(*args)
-        result = result if type(result) == tuple else (result,)
+        result = result if isinstance(result, tuple) else (result,)
 
         if __debug__:
             logger.debug(f"next result: {result}")

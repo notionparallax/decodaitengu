@@ -138,7 +138,7 @@ class Conveyor:
                 f"rest {tr}"
             )
             step = prev
-            for i in range(k):
+            for _i in range(k):
                 step = f_step(step, self.time_delta, end.gas)
                 yield step
 
@@ -150,12 +150,18 @@ class Conveyor:
                 )
 
                 # check nitrogen
-                vt = (v1[0] - v2[0] for v1, v2 in zip(end.data.tissues, stop.data.tissues))
+                vt = (
+                    v1[0] - v2[0]
+                    for v1, v2 in zip(end.data.tissues, stop.data.tissues, strict=False)
+                )
                 dstr = " ".join(str(v) for v in vt)
                 assert all(abs(v) < EPSILON for v in vt), dstr
 
                 # check helium
-                vt = (v1[1] - v2[1] for v1, v2 in zip(end.data.tissues, stop.data.tissues))
+                vt = (
+                    v1[1] - v2[1]
+                    for v1, v2 in zip(end.data.tissues, stop.data.tissues, strict=False)
+                )
                 dstr = " ".join(str(v) for v in vt)
                 assert all(abs(v) < EPSILON for v in vt), dstr
 
