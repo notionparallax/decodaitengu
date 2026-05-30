@@ -21,9 +21,9 @@
 DecoTengu calculator tests.
 """
 
-from decotengu.engine import Engine, Phase
-from decotengu.error import EngineError
-from decotengu.model import eq_gf_limit, ZH_L16B_GF, Data, DecoModelValidator
+from decodaitengu.engine import Engine, Phase
+from decodaitengu.error import EngineError
+from decodaitengu.model import eq_gf_limit, ZH_L16B_GF, Data, DecoModelValidator
 
 from .tools import _engine, _step, AIR
 
@@ -129,9 +129,9 @@ class ZH_L16_GFTestCase(unittest.TestCase):
         m = ZH_L16B_GF()
         data = m.init(1.013)
         tissues = data.tissues
-        self.assertEquals(m.NUM_COMPARTMENTS, len(tissues))
+        self.assertEqual(m.NUM_COMPARTMENTS, len(tissues))
         expected = tuple([(0.75092706, 0.0)] * m.NUM_COMPARTMENTS)
-        self.assertEquals(expected, tissues)
+        self.assertEqual(expected, tissues)
 
 
     def test_tissues_load(self):
@@ -158,7 +158,7 @@ class ZH_L16_GFTestCase(unittest.TestCase):
         self.assertAlmostEqual(0.88692043, v)
 
 
-    @mock.patch('decotengu.model.eq_gf_limit')
+    @mock.patch('decodaitengu.model.eq_gf_limit')
     def test_ceiling_limit(self, f):
         """
         Test calculation of pressure limit (default gf)
@@ -174,10 +174,10 @@ class ZH_L16_GFTestCase(unittest.TestCase):
         m.gf_low = 0.1
 
         v = m.ceiling_limit(data)
-        self.assertEquals(2.4, v)
+        self.assertEqual(2.4, v)
 
 
-    @mock.patch('decotengu.model.eq_gf_limit')
+    @mock.patch('decodaitengu.model.eq_gf_limit')
     def test_ceiling_limit_gf(self, f):
         """
         Test calculation of pressure limit (with gf)
@@ -191,10 +191,10 @@ class ZH_L16_GFTestCase(unittest.TestCase):
         f.side_effect = limit
 
         v = m.ceiling_limit(data, gf=0.2)
-        self.assertEquals(2.4, v)
+        self.assertEqual(2.4, v)
 
 
-    @mock.patch('decotengu.model.eq_gf_limit')
+    @mock.patch('decodaitengu.model.eq_gf_limit')
     def test_gf_limit(self, f):
         """
         Test deco model gradient factor limit calculation
@@ -210,23 +210,23 @@ class ZH_L16_GFTestCase(unittest.TestCase):
         )
 
         v = m.gf_limit(0.3, data)
-        self.assertEquals(v, tuple(range(1, 17)))
-        self.assertEquals(m.NUM_COMPARTMENTS, f.call_count)
+        self.assertEqual(v, tuple(range(1, 17)))
+        self.assertEqual(m.NUM_COMPARTMENTS, f.call_count)
 
         result = tuple(t[0][0] for t in f.call_args_list)
-        self.assertEquals(tuple([0.3]) * 16, result)
+        self.assertEqual(tuple([0.3]) * 16, result)
         result = tuple(t[0][1] for t in f.call_args_list)
-        self.assertEquals(tuple(range(1, 17)), result)
+        self.assertEqual(tuple(range(1, 17)), result)
         result = tuple(t[0][2] for t in f.call_args_list)
-        self.assertEquals(tuple([0.1]) * 16, result)
+        self.assertEqual(tuple([0.1]) * 16, result)
         result = tuple(t[0][3] for t in f.call_args_list)
-        self.assertEquals(m.N2_A, result)
+        self.assertEqual(m.N2_A, result)
         result = tuple(t[0][4] for t in f.call_args_list)
-        self.assertEquals(m.N2_B, result)
+        self.assertEqual(m.N2_B, result)
         result = tuple(t[0][5] for t in f.call_args_list)
-        self.assertEquals(m.HE_A, result)
+        self.assertEqual(m.HE_A, result)
         result = tuple(t[0][6] for t in f.call_args_list)
-        self.assertEquals(m.HE_B, result)
+        self.assertEqual(m.HE_B, result)
 
 
 

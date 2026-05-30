@@ -21,8 +21,8 @@
 Conveyor tests.
 """
 
-from decotengu.engine import Phase
-from decotengu.conveyor import Conveyor
+from decodaitengu.engine import Phase
+from decodaitengu.conveyor import Conveyor
 
 from .tools import _step, AIR, EAN50
 
@@ -87,8 +87,8 @@ class ConveyorTestCase(unittest.TestCase):
         t = conveyor()
         v1 = next(t)
         v2 = next(t)
-        self.assertEquals(s1, v1)
-        self.assertEquals(s2, v2)
+        self.assertEqual(s1, v1)
+        self.assertEqual(s2, v2)
 
 
 # FIXME: readd the tests below
@@ -100,18 +100,18 @@ class ConveyorTestCase(unittest.TestCase):
 #        self.engine.conveyor.time_delta = 60
 # 
 #        steps = list(self.engine._dive_descent(21, AIR))
-#        self.assertEquals(4, len(steps)) # should contain start of a dive
+#        self.assertEqual(4, len(steps)) # should contain start of a dive
 # 
 #        s1, s2, s3, s4 = steps
-#        self.assertEquals(0, s1.depth)
-#        self.assertEquals(0, s1.time)
-#        self.assertEquals(10, s2.depth)
-#        self.assertEquals(60, s2.time)
-#        self.assertEquals(20, s3.depth)
-#        self.assertEquals(120, s3.time)
-#        self.assertEquals(21, s4.depth)
-#        self.assertEquals(126, s4.time) # 1m is 6s at 10m/min
-#        self.assertEquals(AIR, s4.gas)
+#        self.assertEqual(0, s1.depth)
+#        self.assertEqual(0, s1.time)
+#        self.assertEqual(10, s2.depth)
+#        self.assertEqual(60, s2.time)
+#        self.assertEqual(20, s3.depth)
+#        self.assertEqual(120, s3.time)
+#        self.assertEqual(21, s4.depth)
+#        self.assertEqual(126, s4.time) # 1m is 6s at 10m/min
+#        self.assertEqual(AIR, s4.gas)
 
 
 #    def test_dive_const(self):
@@ -122,15 +122,15 @@ class ConveyorTestCase(unittest.TestCase):
 #        self.engine.conveyor.time_delta = 60
 # 
 #        steps = list(self.engine._dive_const(step, 180, AIR))
-#        self.assertEquals(3, len(steps))
+#        self.assertEqual(3, len(steps))
 # 
 #        s1, s2, s3 = steps
-#        self.assertEquals(20, s1.depth)
-#        self.assertEquals(180, s1.time)
-#        self.assertEquals(20, s2.depth)
-#        self.assertEquals(240, s2.time)
-#        self.assertEquals(20, s3.depth)
-#        self.assertEquals(300, s3.time)
+#        self.assertEqual(20, s1.depth)
+#        self.assertEqual(180, s1.time)
+#        self.assertEqual(20, s2.depth)
+#        self.assertEqual(240, s2.time)
+#        self.assertEqual(20, s3.depth)
+#        self.assertEqual(300, s3.time)
 
 
 # vim: sw=4:et:ai

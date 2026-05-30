@@ -113,8 +113,8 @@ override decompression engine object with
 
 Create the decompression engine first
 
-    >>> import decotengu
-    >>> from decotengu.alt.tab import tab_engine
+    >>> import decodaitengu
+    >>> from decodaitengu.alt.tab import tab_engine
     >>> engine = decotengu.create()
     >>> engine.add_gas(0, 21)
 

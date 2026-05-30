@@ -21,7 +21,7 @@
 Tabular calculator tests.
 """
 
-from decotengu.alt.tab import TabExp, tab_engine
+from decodaitengu.alt.tab import TabExp, tab_engine
 
 from ..tools import _engine
 

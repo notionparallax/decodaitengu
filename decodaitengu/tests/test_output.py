@@ -23,11 +23,11 @@ Tests for DecoTengu output classes, functions and coroutines.
 
 import io
 
-from decotengu.engine import Phase, Step
-from decotengu.output import DiveStepInfoGenerator, csv_writer, \
+from decodaitengu.engine import Phase, Step
+from decodaitengu.output import DiveStepInfoGenerator, csv_writer, \
         InfoSample, InfoTissue
-from decotengu.model import ZH_L16B_GF
-from decotengu.flow import coroutine
+from decodaitengu.model import ZH_L16B_GF
+from decodaitengu.flow import coroutine
 
 from .tools import _engine, _data, AIR
 
@@ -62,31 +62,31 @@ class DiveStepInfoTestCase(unittest.TestCase):
         info.send(s1)
         info.send(s2)
 
-        self.assertEquals(2, len(data))
+        self.assertEqual(2, len(data))
         i1, i2 = data
 
-        self.assertEquals(20, i1.depth)
-        self.assertEquals(100, i1.time)
-        self.assertEquals(3.0, i1.pressure)
-        self.assertEquals(AIR, i1.gas)
-        self.assertEquals('const', i1.phase)
-        self.assertEquals(2, len(i1.tissues))
+        self.assertEqual(20, i1.depth)
+        self.assertEqual(100, i1.time)
+        self.assertEqual(3.0, i1.pressure)
+        self.assertEqual(AIR, i1.gas)
+        self.assertEqual('const', i1.phase)
+        self.assertEqual(2, len(i1.tissues))
 
-        self.assertEquals(15, i2.depth)
-        self.assertEquals(145, i2.time)
-        self.assertEquals(2.5, i2.pressure)
-        self.assertEquals(AIR, i2.gas)
-        self.assertEquals('deco_stop', i2.phase)
-        self.assertEquals(2, len(i2.tissues))
+        self.assertEqual(15, i2.depth)
+        self.assertEqual(145, i2.time)
+        self.assertEqual(2.5, i2.pressure)
+        self.assertEqual(AIR, i2.gas)
+        self.assertEqual('deco_stop', i2.phase)
+        self.assertEqual(2, len(i2.tissues))
 
         t1, t2 = i1.tissues
-        self.assertEquals(1, t1.no)
-        self.assertEquals(2.2, t1.pressure)
+        self.assertEqual(1, t1.no)
+        self.assertEqual(2.2, t1.pressure)
         self.assertAlmostEqual(0.57475712, t1.limit)
         self.assertAlmostEqual(0.3, t1.gf)
         self.assertAlmostEqual(1.49384343, t1.gf_limit)
-        self.assertEquals(2, t2.no)
-        self.assertEquals(2.3, t2.pressure)
+        self.assertEqual(2, t2.no)
+        self.assertEqual(2.3, t2.pressure)
         self.assertAlmostEqual(0.84681999, t2.limit)
         self.assertAlmostEqual(0.3, t2.gf)
         self.assertAlmostEqual(1.72332601, t2.gf_limit)
@@ -120,10 +120,10 @@ class CSVWriterTestCase(unittest.TestCase):
 
         st = f.getvalue().split('\n')
 
-        self.assertEquals(6, len(st))
-        self.assertEquals(12, len(st[0].split(',')))
-        self.assertEquals(12, len(st[1].split(',')))
-        self.assertEquals('', st[-1])
+        self.assertEqual(6, len(st))
+        self.assertEqual(12, len(st[0].split(',')))
+        self.assertEqual(12, len(st[1].split(',')))
+        self.assertEqual('', st[-1])
         self.assertTrue(st[0].startswith('depth,time,pressure,'))
         self.assertTrue(st[1].endswith('descent\r'), st[1])
         self.assertTrue(st[4].endswith('const\r'), st[4])

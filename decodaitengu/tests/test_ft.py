@@ -17,7 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-from decotengu.ft import bisect_find, recurse_while
+from decodaitengu.ft import bisect_find, recurse_while
 
 import unittest
 
@@ -33,7 +33,7 @@ class RecurseWhileTestCase(unittest.TestCase):
         f = lambda a: a + 1
         p = lambda a: a < 5
         v = recurse_while(p, f, 3)
-        self.assertEquals(4, v)
+        self.assertEqual(4, v)
 
 
     def test_recurse_start(self):
@@ -43,7 +43,7 @@ class RecurseWhileTestCase(unittest.TestCase):
         f = lambda a: a + 1
         p = lambda a: a < 5
         v = recurse_while(p, f, 5)
-        self.assertEquals(5, v)
+        self.assertEqual(5, v)
 
 
 
@@ -64,7 +64,7 @@ class BisectFindTestCase(unittest.TestCase):
         at = [  1,   2,   3,   4, 5, 6, 7, 8, 9, 10]
         bt = [0.1, 0.2, 2.9, 4.1, 6, 7, 8, 9, 10, 11]
         k = bisect_find(10, self._f, at, bt)
-        self.assertEquals(3, k)
+        self.assertEqual(3, k)
 
 
     def test_find_left(self):
@@ -74,7 +74,7 @@ class BisectFindTestCase(unittest.TestCase):
         at = [0.2, 0.1,   2,   4, 5, 6, 7, 8, 9, 10]
         bt = [0.1, 0.2, 2.9, 4.1, 6, 7, 8, 9, 10, 11]
         k = bisect_find(10, self._f, at, bt)
-        self.assertEquals(1, k)
+        self.assertEqual(1, k)
 
 
     def test_find_last(self):
@@ -84,7 +84,7 @@ class BisectFindTestCase(unittest.TestCase):
         at = [ 0.1, 0.2, 2.9, 4.1, 6, 7, 8, 9, 10, 9]
         bt = [0.05, 0.1,   2,   4, 5, 6, 7, 8, 9, 10]
         k = bisect_find(10, self._f, at, bt)
-        self.assertEquals(9, k)
+        self.assertEqual(9, k)
 
 
     def test_no_solution(self):
@@ -95,13 +95,13 @@ class BisectFindTestCase(unittest.TestCase):
         at = [0.05, 0.1,   2,   4, 5, 6, 7, 8, 9, 10]
         bt = [ 0.1, 0.2, 2.9, 4.1, 6, 7, 8, 9, 10, 11]
         k = bisect_find(10, self._f, at, bt)
-        self.assertEquals(0, k)
+        self.assertEqual(0, k)
 
         # each at >= bt
         at = [ 0.1, 0.2, 2.9, 4.1, 6, 7, 8, 9, 10, 11]
         bt = [0.05, 0.1,   2,   4, 5, 6, 7, 8, 9, 10]
         k = bisect_find(10, self._f, at, bt)
-        self.assertEquals(10, k)
+        self.assertEqual(10, k)
 
 
 # vim: sw=4:et:ai

@@ -21,8 +21,8 @@
 Tests for DecoTengu dive decompression engine.
 """
 
-from decotengu.engine import Engine, DecoTable, Phase, GasMix, DecoStop
-from decotengu.error import ConfigError, EngineError
+from decodaitengu.engine import Engine, DecoTable, Phase, GasMix, DecoStop
+from decodaitengu.error import ConfigError, EngineError
 
 from .tools import _step, _engine, _data, AIR, EAN50
 
@@ -48,7 +48,7 @@ class EngineTestCase(unittest.TestCase):
         """
         self.engine.surface_pressure = 1.2
         v = self.engine._to_pressure(20)
-        self.assertAlmostEquals(v, 3.2)
+        self.assertAlmostEqual(v, 3.2)
 
 
     def test_to_depth(self):
@@ -57,7 +57,7 @@ class EngineTestCase(unittest.TestCase):
         """
         self.engine.ascent_rate = 10
         v = self.engine._to_depth(1.8)
-        self.assertAlmostEquals(v, 8)
+        self.assertAlmostEqual(v, 8)
 
 
     def test_pressure_to_time(self):
@@ -85,7 +85,7 @@ class EngineTestCase(unittest.TestCase):
         Test ceiling of absolute pressure at value divisble by 3
         """
         v = self.engine._ceil_pressure_3m(2.0)
-        self.assertEquals(2.2, v)
+        self.assertEqual(2.2, v)
 
 
     def test_n_stops(self):
@@ -97,8 +97,8 @@ class EngineTestCase(unittest.TestCase):
         p1 = engine._to_pressure(21)
         p2 = engine._to_pressure(9)
 
-        self.assertEquals(7, engine._n_stops(p1))
-        self.assertEquals(4, engine._n_stops(p1, p2))
+        self.assertEqual(7, engine._n_stops(p1))
+        self.assertEqual(4, engine._n_stops(p1, p2))
 
 
     def test_gas_switch(self):
@@ -108,9 +108,9 @@ class EngineTestCase(unittest.TestCase):
         start = _step(Phase.ASCENT, 3.0, 120)
         step = self.engine._switch_gas(start, EAN50)
 
-        self.assertEquals(Phase.GAS_SWITCH, step.phase)
-        self.assertEquals(3.0, step.abs_p)
-        self.assertEquals(120, step.time)
+        self.assertEqual(Phase.GAS_SWITCH, step.phase)
+        self.assertEqual(3.0, step.abs_p)
+        self.assertEqual(120, step.time)
 
 
     def test_ceiling_invariant(self):
@@ -158,11 +158,11 @@ class EngineTestCase(unittest.TestCase):
         self.engine._tissue_pressure_const = mock.MagicMock(return_value=data)
 
         step = self.engine._step_next(start, 30, AIR)
-        self.assertEquals('const', step.phase)
-        self.assertEquals(3.0, step.abs_p)
-        self.assertEquals(150, step.time)
-        self.assertEquals(AIR, step.gas)
-        self.assertEquals(data, step.data)
+        self.assertEqual('const', step.phase)
+        self.assertEqual(3.0, step.abs_p)
+        self.assertEqual(150, step.time)
+        self.assertEqual(AIR, step.gas)
+        self.assertEqual(data, step.data)
         self.engine._tissue_pressure_const.assert_called_once_with(
             3.0, 30, AIR, start.data
         )
@@ -178,11 +178,11 @@ class EngineTestCase(unittest.TestCase):
         data = mock.MagicMock()
         self.engine._tissue_pressure_descent = mock.MagicMock(return_value=data)
         step = self.engine._step_next_descent(start, 0.5, AIR)
-        self.assertEquals('descent', step.phase)
-        self.assertEquals(3.5, step.abs_p)
-        self.assertEquals(2.5, step.time)
-        self.assertEquals(AIR, step.gas)
-        self.assertEquals(data, step.data)
+        self.assertEqual('descent', step.phase)
+        self.assertEqual(3.5, step.abs_p)
+        self.assertEqual(2.5, step.time)
+        self.assertEqual(AIR, step.gas)
+        self.assertEqual(data, step.data)
         self.engine._tissue_pressure_descent.assert_called_once_with(
             3.0, 0.5, AIR, start.data
         )
@@ -198,11 +198,11 @@ class EngineTestCase(unittest.TestCase):
         data = mock.MagicMock()
         self.engine._tissue_pressure_ascent = mock.MagicMock(return_value=data)
         step = self.engine._step_next_ascent(start, 0.5, AIR)
-        self.assertEquals('ascent', step.phase)
-        self.assertEquals(2.5, step.abs_p)
-        self.assertEquals(2.5, step.time)
-        self.assertEquals(AIR, step.gas)
-        self.assertEquals(data, step.data)
+        self.assertEqual('ascent', step.phase)
+        self.assertEqual(2.5, step.abs_p)
+        self.assertEqual(2.5, step.time)
+        self.assertEqual(AIR, step.gas)
+        self.assertEqual(data, step.data)
 
         self.engine._tissue_pressure_ascent.assert_called_once_with(
             3.0, 0.5, AIR, start.data
@@ -233,7 +233,7 @@ class EngineTestCase(unittest.TestCase):
         self.engine.model.load.assert_called_once_with(
             2.0, 10, AIR, -1.0, [1.1, 1.1]
         )
-        self.assertEquals([1.2, 1.3], v)
+        self.assertEqual([1.2, 1.3], v)
 
 
     def test_tissue_load_descent(self):
@@ -248,7 +248,7 @@ class EngineTestCase(unittest.TestCase):
         self.engine.model.load.assert_called_once_with(
             2.0, 10, AIR, 1.0, [1.1, 1.1]
         )
-        self.assertEquals([1.2, 1.3], v)
+        self.assertEqual([1.2, 1.3], v)
 
 
     def test_ascent_check(self):
@@ -315,9 +315,9 @@ class EngineTestCase(unittest.TestCase):
 
         self.assertFalse(self.engine._dive_descent.called)
         step = steps[0]
-        self.assertEquals(Phase.START, step.phase, step)
-        self.assertEquals(0, step.time, step)
-        self.assertEquals(5, step.abs_p, step)
+        self.assertEqual(Phase.START, step.phase, step)
+        self.assertEqual(0, step.time, step)
+        self.assertEqual(5, step.abs_p, step)
 
 
 
@@ -449,13 +449,13 @@ class EngineDiveDescentTestCase(unittest.TestCase):
 
         stages = list(self.engine._descent_stages(6.6, gas_list))
 
-        self.assertEquals(2, len(stages))
+        self.assertEqual(2, len(stages))
 
         s1, s2 = stages
-        self.assertEquals(4.6, s1[0])
-        self.assertEquals(ean30, s1[1])
-        self.assertEquals(6.6, s2[0])
-        self.assertEquals(air, s2[1])
+        self.assertEqual(4.6, s1[0])
+        self.assertEqual(ean30, s1[1])
+        self.assertEqual(6.6, s2[0])
+        self.assertEqual(air, s2[1])
 
 
     def test_descent_stages_exact(self):
@@ -468,11 +468,11 @@ class EngineDiveDescentTestCase(unittest.TestCase):
 
         stages = list(self.engine._descent_stages(4.6, gas_list))
 
-        self.assertEquals(1, len(stages))
+        self.assertEqual(1, len(stages))
 
         s1 = stages[0]
-        self.assertEquals(4.6, s1[0])
-        self.assertEquals(ean30, s1[1])
+        self.assertEqual(4.6, s1[0])
+        self.assertEqual(ean30, s1[1])
 
 
     def test_dive_descent(self):
@@ -481,14 +481,14 @@ class EngineDiveDescentTestCase(unittest.TestCase):
         """
         self.engine.descent_rate = 10
         steps = list(self.engine._dive_descent(3.1, [AIR]))
-        self.assertEquals(2, len(steps)) # should contain start of a dive
+        self.assertEqual(2, len(steps)) # should contain start of a dive
 
         s1, s2 = steps
-        self.assertEquals(1.0, s1.abs_p)
-        self.assertEquals(0, s1.time)
+        self.assertEqual(1.0, s1.abs_p)
+        self.assertEqual(0, s1.time)
         self.assertAlmostEqual(3.1, s2.abs_p)
         self.assertAlmostEqual(2.1, s2.time) # 1m is 6s at 10m/min
-        self.assertEquals(AIR, s2.gas)
+        self.assertEqual(AIR, s2.gas)
 
 
     def test_dive_descent_travel(self):
@@ -501,25 +501,25 @@ class EngineDiveDescentTestCase(unittest.TestCase):
         gas_list = (ean30, air)
 
         steps = list(self.engine._dive_descent(6.6, gas_list))
-        self.assertEquals(4, len(steps)) # should contain start of a dive
+        self.assertEqual(4, len(steps)) # should contain start of a dive
 
         s1, s2, s3, s4 = steps # includes gas switch
-        self.assertEquals(1.0, s1.abs_p)
-        self.assertEquals(0, s1.time)
-        self.assertEquals(ean30, s1.gas)
+        self.assertEqual(1.0, s1.abs_p)
+        self.assertEqual(0, s1.time)
+        self.assertEqual(ean30, s1.gas)
 
-        self.assertEquals(4.6, s2.abs_p)
+        self.assertEqual(4.6, s2.abs_p)
         self.assertAlmostEqual(3.6, s2.time) # 1m is 6s at 10m/min
-        self.assertEquals(ean30, s2.gas)
+        self.assertEqual(ean30, s2.gas)
 
         # test gas switch
-        self.assertEquals(4.6, s3.abs_p)
+        self.assertEqual(4.6, s3.abs_p)
         self.assertAlmostEqual(3.6, s3.time)
-        self.assertEquals(air, s3.gas)
+        self.assertEqual(air, s3.gas)
 
-        self.assertEquals(6.6, s4.abs_p)
+        self.assertEqual(6.6, s4.abs_p)
         self.assertAlmostEqual(5.6, s4.time) # 1m is 6s at 10m/min
-        self.assertEquals(air, s4.gas)
+        self.assertEqual(air, s4.gas)
 
 
     def test_dive_descent_travel_exact(self):
@@ -532,21 +532,21 @@ class EngineDiveDescentTestCase(unittest.TestCase):
         gas_list = (ean30, air)
 
         steps = list(self.engine._dive_descent(4.6, gas_list))
-        self.assertEquals(3, len(steps)) # should contain start of a dive
+        self.assertEqual(3, len(steps)) # should contain start of a dive
 
         s1, s2, s3 = steps # s3 is gas switch to air
-        self.assertEquals(1.0, s1.abs_p)
-        self.assertEquals(0, s1.time)
-        self.assertEquals(ean30, s1.gas)
+        self.assertEqual(1.0, s1.abs_p)
+        self.assertEqual(0, s1.time)
+        self.assertEqual(ean30, s1.gas)
 
-        self.assertEquals(4.6, s2.abs_p)
+        self.assertEqual(4.6, s2.abs_p)
         self.assertAlmostEqual(3.6, s2.time) # 1m is 6s at 10m/min
-        self.assertEquals(ean30, s2.gas)
+        self.assertEqual(ean30, s2.gas)
 
         # test gas switch
-        self.assertEquals(4.6, s3.abs_p)
-        self.assertAlmostEquals(3.6, s3.time)
-        self.assertEquals(air, s3.gas)
+        self.assertEqual(4.6, s3.abs_p)
+        self.assertAlmostEqual(3.6, s3.time)
+        self.assertEqual(air, s3.gas)
 
 
 
@@ -572,8 +572,8 @@ class EngineDiveAscentTestCase(unittest.TestCase):
         self.engine.add_gas(0, 21)
 
         steps = list(self.engine._dive_ascent(start, self.engine._gas_list))
-        self.assertEquals(1, len(steps))
-        self.assertEquals(step, steps[0])
+        self.assertEqual(1, len(steps))
+        self.assertEqual(step, steps[0])
         self.assertTrue(self.engine._ndl_ascent.called)
 
 
@@ -615,9 +615,9 @@ class EngineDiveAscentTestCase(unittest.TestCase):
         """
         stages = list(self.engine._free_ascent_stages([AIR]))
 
-        self.assertEquals(1, len(stages))
-        self.assertEquals(1.0, stages[0][0])
-        self.assertEquals(21, stages[0][1].o2)
+        self.assertEqual(1, len(stages))
+        self.assertEqual(1.0, stages[0][0])
+        self.assertEqual(21, stages[0][1].o2)
 
 
     def test_ascent_stages_free(self):
@@ -631,18 +631,18 @@ class EngineDiveAscentTestCase(unittest.TestCase):
         gas_list = self.engine._gas_list
 
         stages = list(self.engine._free_ascent_stages(gas_list))
-        self.assertEquals(4, len(stages))
-        self.assertAlmostEquals(3.4, stages[0][0])
-        self.assertEquals(21, stages[0][1].o2)
+        self.assertEqual(4, len(stages))
+        self.assertAlmostEqual(3.4, stages[0][0])
+        self.assertEqual(21, stages[0][1].o2)
 
-        self.assertEquals(2.2, stages[1][0])
-        self.assertEquals(50, stages[1][1].o2)
+        self.assertEqual(2.2, stages[1][0])
+        self.assertEqual(50, stages[1][1].o2)
 
-        self.assertEquals(1.6, stages[2][0])
-        self.assertEquals(80, stages[2][1].o2)
+        self.assertEqual(1.6, stages[2][0])
+        self.assertEqual(80, stages[2][1].o2)
 
-        self.assertEquals(1.0, stages[3][0])
-        self.assertEquals(100, stages[3][1].o2)
+        self.assertEqual(1.0, stages[3][0])
+        self.assertEqual(100, stages[3][1].o2)
 
 
     def test_ascent_stages_deco_single(self):
@@ -651,9 +651,9 @@ class EngineDiveAscentTestCase(unittest.TestCase):
         """
         stages = list(self.engine._deco_ascent_stages(3.2, [AIR]))
 
-        self.assertEquals(1, len(stages))
-        self.assertEquals(1.0, stages[0][0])
-        self.assertEquals(21, stages[0][1].o2)
+        self.assertEqual(1, len(stages))
+        self.assertEqual(1.0, stages[0][0])
+        self.assertEqual(21, stages[0][1].o2)
 
 
     def test_ascent_stages_deco(self):
@@ -667,16 +667,16 @@ class EngineDiveAscentTestCase(unittest.TestCase):
         gas_list = self.engine._gas_list
 
         stages = list(self.engine._deco_ascent_stages(3.2, gas_list))
-        self.assertEquals(3, len(stages))
+        self.assertEqual(3, len(stages))
 
-        self.assertEquals(1.9, stages[0][0])
-        self.assertEquals(50, stages[0][1].o2)
+        self.assertEqual(1.9, stages[0][0])
+        self.assertEqual(50, stages[0][1].o2)
 
-        self.assertEquals(1.6, stages[1][0])
-        self.assertEquals(80, stages[1][1].o2)
+        self.assertEqual(1.6, stages[1][0])
+        self.assertEqual(80, stages[1][1].o2)
 
-        self.assertEquals(1.0, stages[2][0])
-        self.assertEquals(100, stages[2][1].o2)
+        self.assertEqual(1.0, stages[2][0])
+        self.assertEqual(100, stages[2][1].o2)
 
 
     def test_ascent_switch_gas_same_depth(self):
@@ -687,9 +687,9 @@ class EngineDiveAscentTestCase(unittest.TestCase):
         start = _step(Phase.ASCENT, 3.2, 1200, AIR, data=data)
 
         steps = self.engine._ascent_switch_gas(start, EAN50)
-        self.assertEquals(1, len(steps))
-        self.assertEquals(3.2, steps[0].abs_p)
-        self.assertEquals(1200, steps[0].time)
+        self.assertEqual(1, len(steps))
+        self.assertEqual(3.2, steps[0].abs_p)
+        self.assertEqual(1200, steps[0].time)
 
 
     def test_ascent_switch_gas(self):
@@ -769,7 +769,7 @@ class EngineDiveAscentTestCase(unittest.TestCase):
         self.engine._find_first_stop = mock.MagicMock(side_effect=[s4, s8])
 
         steps = list(self.engine._free_staged_ascent(s3, stages))
-        self.assertEquals([s4, s5, s6, s7, s8], steps)
+        self.assertEqual([s4, s5, s6, s7, s8], steps)
 
         self.assertEqual(1, self.engine._ascent_switch_gas.call_count)
         self.assertEqual(1, self.engine._inv_limit.call_count)
@@ -798,7 +798,7 @@ class EngineDiveAscentTestCase(unittest.TestCase):
         self.engine._find_first_stop = mock.MagicMock(return_value=s4)
 
         steps = list(self.engine._free_staged_ascent(s3, stages))
-        self.assertEquals([s4], steps)
+        self.assertEqual([s4], steps)
 
         self.assertEqual(1, self.engine._inv_limit.call_count)
         self.assertEqual(1, self.engine._find_first_stop.call_count)
@@ -829,14 +829,14 @@ class EngineDiveAscentTestCase(unittest.TestCase):
         # expect 7 dive steps each for:
         # - deco stops between 21m and 0m
         # - ascent between deco stops
-        self.assertEquals(14, len(steps))
+        self.assertEqual(14, len(steps))
 
         # gf step = (0.85 - 0.30) / 7 = 0.078571
         gf = self.engine._deco_stop.call_args_list[0][0][-1]
-        self.assertAlmostEquals(0.30 + 0.078571, gf, 6)
+        self.assertAlmostEqual(0.30 + 0.078571, gf, 6)
         gf = self.engine._deco_stop.call_args_list[-1][0][-1]
-        self.assertAlmostEquals(0.85, gf)
-        self.assertAlmostEquals(0.85, steps[-1].data.gf)
+        self.assertAlmostEqual(0.85, gf)
+        self.assertAlmostEqual(0.85, steps[-1].data.gf)
 
 
     def test_deco_staged_ascent_gas_switch(self):
@@ -882,9 +882,9 @@ class EngineDiveAscentTestCase(unittest.TestCase):
 
         # expect 14 dive steps (7 deco stops and 7 ascents to next deco
         # stop) + gas switch step at 12m, 15 in total
-        self.assertEquals(15, len(steps), steps)
+        self.assertEqual(15, len(steps), steps)
         # 7 deco stops
-        self.assertEquals(7, self.engine._deco_stop.call_count)
+        self.assertEqual(7, self.engine._deco_stop.call_count)
 
 
     def test_deco_stops(self):
@@ -903,16 +903,16 @@ class EngineDiveAscentTestCase(unittest.TestCase):
         step = _step(Phase.ASCENT, 2.8, 2, data=data)
 
         stops = list(self.engine._deco_stops(step, stages))
-        self.assertEquals(6, len(stops))
+        self.assertEqual(6, len(stops))
 
         stops = list(zip(*stops))
-        self.assertEquals((2.2,) * 2 + (1.0,) * 4, stops[0])
-        self.assertEquals((AIR,) * 2 + (gas_mix,) * 4, stops[1])
-        self.assertEquals((0.3,) * 6, stops[2])
+        self.assertEqual((2.2,) * 2 + (1.0,) * 4, stops[0])
+        self.assertEqual((AIR,) * 2 + (gas_mix,) * 4, stops[1])
+        self.assertEqual((0.3,) * 6, stops[2])
 
         gfv = stops[3]
         diff = [round(v2 - v1, 2) for v1, v2 in zip(gfv[:-1], gfv[1:])]
-        self.assertEquals([0.1] * 5, diff)
+        self.assertEqual([0.1] * 5, diff)
 
 
     def test_deco_stops_6m(self):
@@ -933,20 +933,20 @@ class EngineDiveAscentTestCase(unittest.TestCase):
         step = _step(Phase.ASCENT, 2.8, 2, data=data)
 
         stops = list(self.engine._deco_stops(step, stages))
-        self.assertEquals(5, len(stops))
+        self.assertEqual(5, len(stops))
 
         stops = list(zip(*stops))
-        self.assertEquals((2.2,) * 2 + (1.0,) * 3, stops[0])
-        self.assertEquals((AIR,) * 2 + (gas_mix,) * 3, stops[1])
-        self.assertEquals((0.3,) * 4 + (0.6,), stops[2])
+        self.assertEqual((2.2,) * 2 + (1.0,) * 3, stops[0])
+        self.assertEqual((AIR,) * 2 + (gas_mix,) * 3, stops[1])
+        self.assertEqual((0.3,) * 4 + (0.6,), stops[2])
 
         gfv = stops[3]
         diff = [round(v2 - v1, 2) for v1, v2 in zip(gfv[:-1], gfv[1:])]
-        self.assertEquals([0.1] * 3 + [0.2], diff)
+        self.assertEqual([0.1] * 3 + [0.2], diff)
 
 
-    @mock.patch('decotengu.engine.recurse_while')
-    @mock.patch('decotengu.engine.bisect_find')
+    @mock.patch('decodaitengu.engine.recurse_while')
+    @mock.patch('decodaitengu.engine.bisect_find')
     def test_deco_stop(self, f_bf, f_r):
         """
         Test deco stop calculation
@@ -962,11 +962,11 @@ class EngineDiveAscentTestCase(unittest.TestCase):
         f_bf.return_value = 2 # expect 3min deco stop
 
         step = self.engine._deco_stop(step, 0.3, AIR, 0.42)
-        self.assertEquals(5, step.time)
+        self.assertEqual(5, step.time)
 
 
-    @mock.patch('decotengu.engine.recurse_while')
-    @mock.patch('decotengu.engine.bisect_find')
+    @mock.patch('decodaitengu.engine.recurse_while')
+    @mock.patch('decodaitengu.engine.bisect_find')
     def test_deco_stop_1min(self, f_bf, f_r):
         """
         Test 1min deco stop calculation
@@ -982,7 +982,7 @@ class EngineDiveAscentTestCase(unittest.TestCase):
         f_bf.return_value = None
 
         step = self.engine._deco_stop(step, 0.3, AIR, 0.42)
-        self.assertEquals(3, step.time)
+        self.assertEqual(3, step.time)
 
 
 
@@ -1005,10 +1005,10 @@ class GasMixTestCase(unittest.TestCase):
         self.engine.add_gas(33, 32)
         mix = self.engine._gas_list[1]
 
-        self.assertEquals(32, mix.o2)
-        self.assertEquals(68, mix.n2)
-        self.assertEquals(0, mix.he)
-        self.assertEquals(33, mix.depth)
+        self.assertEqual(32, mix.o2)
+        self.assertEqual(68, mix.n2)
+        self.assertEqual(0, mix.he)
+        self.assertEqual(33, mix.depth)
 
 
     def test_adding_gas_trimix(self):
@@ -1022,25 +1022,25 @@ class GasMixTestCase(unittest.TestCase):
 
         mix1, mix2, mix3, mix4 = self.engine._gas_list
 
-        self.assertEquals(0, mix1.depth)
-        self.assertEquals(21, mix1.o2)
-        self.assertEquals(79, mix1.n2)
-        self.assertEquals(0, mix1.he)
+        self.assertEqual(0, mix1.depth)
+        self.assertEqual(21, mix1.o2)
+        self.assertEqual(79, mix1.n2)
+        self.assertEqual(0, mix1.he)
 
-        self.assertEquals(20, mix2.depth)
-        self.assertEquals(21, mix2.o2)
-        self.assertEquals(44, mix2.n2)
-        self.assertEquals(35, mix2.he)
+        self.assertEqual(20, mix2.depth)
+        self.assertEqual(21, mix2.o2)
+        self.assertEqual(44, mix2.n2)
+        self.assertEqual(35, mix2.he)
 
-        self.assertEquals(15, mix3.depth)
-        self.assertEquals(18, mix3.o2)
-        self.assertEquals(37, mix3.n2)
-        self.assertEquals(45, mix3.he)
+        self.assertEqual(15, mix3.depth)
+        self.assertEqual(18, mix3.o2)
+        self.assertEqual(37, mix3.n2)
+        self.assertEqual(45, mix3.he)
 
-        self.assertEquals(10, mix4.depth)
-        self.assertEquals(15, mix4.o2)
-        self.assertEquals(30, mix4.n2)
-        self.assertEquals(55, mix4.he)
+        self.assertEqual(10, mix4.depth)
+        self.assertEqual(15, mix4.o2)
+        self.assertEqual(30, mix4.n2)
+        self.assertEqual(55, mix4.he)
 
 
     def test_gas_list_empty(self):
@@ -1121,11 +1121,11 @@ class DecoTableTestCase(unittest.TestCase):
         dt.append(15, 4)
         dt.append(12, 1 - 10e-12) # 1min
 
-        self.assertEquals(2, len(dt))
-        self.assertEquals(15, dt[0].depth)
-        self.assertEquals(4, dt[0].time)
-        self.assertEquals(12, dt[1].depth)
-        self.assertEquals(1, dt[1].time)
+        self.assertEqual(2, len(dt))
+        self.assertEqual(15, dt[0].depth)
+        self.assertEqual(4, dt[0].time)
+        self.assertEqual(12, dt[1].depth)
+        self.assertEqual(1, dt[1].time)
 
 
     def test_adding_stop_frac(self):
@@ -1136,11 +1136,11 @@ class DecoTableTestCase(unittest.TestCase):
         dt.append(15, 4)
         dt.append(12, 1 + 10e-12) # 1min
 
-        self.assertEquals(2, len(dt))
-        self.assertEquals(15, dt[0].depth)
-        self.assertEquals(4, dt[0].time)
-        self.assertEquals(12, dt[1].depth)
-        self.assertEquals(1, dt[1].time)
+        self.assertEqual(2, len(dt))
+        self.assertEqual(15, dt[0].depth)
+        self.assertEqual(4, dt[0].time)
+        self.assertEqual(12, dt[1].depth)
+        self.assertEqual(1, dt[1].time)
 
 
     def test_total(self):
@@ -1153,7 +1153,7 @@ class DecoTableTestCase(unittest.TestCase):
         )
         dt = DecoTable()
         dt.extend(stops)
-        self.assertEquals(4, dt.total)
+        self.assertEqual(4, dt.total)
 
 
     def test_total_no_deco(self):
@@ -1161,7 +1161,7 @@ class DecoTableTestCase(unittest.TestCase):
         Test deco table total time summary with no deco stops
         """
         dt = DecoTable()
-        self.assertEquals(0, dt.total)
+        self.assertEqual(0, dt.total)
 
 
 # vim: sw=4:et:ai

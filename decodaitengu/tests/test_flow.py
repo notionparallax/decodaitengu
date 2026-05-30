@@ -18,39 +18,35 @@
 #
 
 """
-DecoTengu unit tests tools.
+Test for DecoTengu data flow processing functions and coroutines.
 """
 
-from decotengu.engine import Engine, Step, GasMix
-from decotengu.model import Data
+from decodaitengu.flow import sender, coroutine
 
-from unittest import mock
+import unittest
 
-AIR = GasMix(depth=0, o2=21, n2=79, he=0)
-EAN50 = GasMix(depth=22, o2=50, n2=50, he=0)
-O2 = GasMix(depth=6, o2=100, n2=0, he=0)
+class SenderTestCase(unittest.TestCase):
+    """
+    Sender decorator tests.
+    """
+    def test_sender(self):
+        """
+        Test sender decorator
+        """
+        def f(n):
+            return range(n)
 
-def _step(phase, abs_p, time, gas=AIR, data=None):
-    if data is None:
-        data = mock.MagicMock()
-        data.gf = 0.3
-    step = Step(phase, abs_p, time, gas, data)
-    return step
+        data = []
+        @coroutine
+        def printer():
+            while True:
+                v = yield
+                data.append(v)
 
-
-def _engine(air=False):
-    engine = Engine()
-    engine.surface_pressure = 1.0
-    engine._meter_to_bar = 0.1
-    engine._p3m = 0.3
-    if air:
-        engine.add_gas(0, 21)
-    return engine
-
-
-def _data(gf, *pressure):
-    tp = tuple((v, 0.0) for v in pressure)
-    return Data(tp, gf)
+        fd = sender(f, printer)
+        result = list(fd(3))
+        self.assertEqual([0, 1, 2], result)
+        self.assertEqual([0, 1, 2], data)
 
 
 # vim: sw=4:et:ai

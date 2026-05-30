@@ -22,8 +22,8 @@ Tests for alternative implementations of various parts of DecoTengu's
 Engine class.
 """
 
-from decotengu.engine import Phase
-from decotengu.alt.naive import AscentJumper, DecoStopStepper
+from decodaitengu.engine import Phase
+from decodaitengu.alt.naive import AscentJumper, DecoStopStepper
 
 from ..tools import _step, _engine, _data, AIR
 
@@ -44,9 +44,9 @@ class AscentJumperTestCase(unittest.TestCase):
         data = None
         start = _step(Phase.ASCENT, 4.0, 20, data=data)
         steps = list(engine._free_ascent(start, 1.5, AIR))
-        self.assertEquals(2, len(steps))
-        self.assertEquals([3.0, 2.0], [s.abs_p for s in steps])
-        self.assertEquals([21, 22], [s.time for s in steps])
+        self.assertEqual(2, len(steps))
+        self.assertEqual([3.0, 2.0], [s.abs_p for s in steps])
+        self.assertEqual([21, 22], [s.time for s in steps])
 
 
 
@@ -68,7 +68,7 @@ class DecoStopStepperTestCase(unittest.TestCase):
         step = _deco_stop(start, 0.3, AIR, 0.4)
 
         # 5min of deco
-        self.assertEquals(25, step.time)
+        self.assertEqual(25, step.time)
 
 
 # vim: sw=4:et:ai

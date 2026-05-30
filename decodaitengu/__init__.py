@@ -21,19 +21,19 @@
 Basic Usage
 -----------
 
-The DecoTengu dive decompression library exports its main API via
-``decotengu`` module.
+The DecoDaiTengu dive decompression library exports its main API via the
+``decodaitengu`` module.
 
 The calculation of dive profile and decompression table can be performed in
-few simple steps by using :func:`~decotengu.create` function, which creates
+few simple steps by using :func:`~decodaitengu.create` function, which creates
 :class:`DecoTengu engine <Engine>` and :class:`decompression table
 <DecoTable>` objects. Having DecoTengu engine object, we need to instruct
 it what gas mixes are used after which we can start calculations. The
 following example executes calculations for a dive to 35 meters for 40
 minutes on air::
 
-    >>> import decotengu
-    >>> engine = decotengu.create()
+    >>> import decodaitengu
+    >>> engine = decodaitengu.create()
     >>> engine.add_gas(0, 21)
     >>> profile = engine.calculate(35, 40)
 
@@ -72,11 +72,11 @@ Configuring Decompression Model
 The default decompression model used by DecoTengu library is Buhlmann's
 :class:`ZH-L16B <ZH_L16B>` model with gradient factors - ZH-L16B-GF::
 
-    >>> import decotengu
-    >>> engine = decotengu.create()
+    >>> import decodaitengu
+    >>> engine = decodaitengu.create()
     >>> engine.add_gas(0, 21)
     >>> engine.model      # doctest:+ELLIPSIS
-    <decotengu.model.ZH_L16B_GF object at ...>
+    <decodaitengu.model.ZH_L16B_GF object at ...>
     >>> engine.model.gf_low
     0.3
     >>> engine.model.gf_high
@@ -84,7 +84,7 @@ The default decompression model used by DecoTengu library is Buhlmann's
 
 We can switch to ZH-L16C-GF decompression model easily::
 
-    >>> engine.model = decotengu.ZH_L16C_GF()
+    >>> engine.model = decodaitengu.ZH_L16C_GF()
     >>> profile = engine.calculate(35, 40)
     >>> list(profile)            # doctest:+ELLIPSIS
     [Step...]
@@ -102,7 +102,7 @@ Gradient factor parameters can be adjusted using ``gf_low`` and ``gf_high``
 attributes::
 
     >>> engine.model      # doctest:+ELLIPSIS
-    <decotengu.model.ZH_L16C_GF object at ...>
+    <decodaitengu.model.ZH_L16C_GF object at ...>
     >>> engine.model.gf_low = 0.2    # vs. 0.30 - first stop deeper
     >>> engine.model.gf_high = 0.90  # vs. 0.85 - last stop shorter
     >>> profile = engine.calculate(35, 40)
@@ -122,19 +122,34 @@ from .model import ZH_L16B_GF, ZH_L16C_GF, DecoModelValidator
 from .flow import sender
 from .conveyor import Conveyor
 
-__version__ = '0.14.0'
+# New modern API
+from .models import ZHL16B, ZHL16C, DecoModel
+from .types import (
+    Cylinder,
+    DecoStop as DecoStopInfo,
+    DiveSummary,
+    Gas,
+    GasUsage,
+    Phase as PhaseEnum,
+    Step as StepInfo,
+    TissueState,
+)
+from .tracking import CNSTracker, CNSMethod, OTUTracker
+from .planning import plan_dive
+
+__version__ = '1.0.0'
 
 
 def create(time_delta=None, validate=True):
     """
-    Create decompression engine .
+    Create decompression engine (legacy API).
 
     The decompression model validation is enabled by default.
 
     Usage
 
-    >>> import decotengu
-    >>> engine = decotengu.create()
+    >>> import decodaitengu
+    >>> engine = decodaitengu.create()
     >>> engine.add_gas(0, 21)
     >>> data = list(engine.calculate(35, 40))
     >>> engine.deco_table.total
@@ -157,6 +172,26 @@ def create(time_delta=None, validate=True):
     return engine
 
 
-__all__ = ['create', 'Engine', 'ZH_L16B_GF', 'ZH_L16C_GF']
-
-# vim: sw=4:et:ai
+__all__ = [
+    # Legacy API
+    'create',
+    'Engine',
+    'ZH_L16B_GF',
+    'ZH_L16C_GF',
+    # Modern API
+    'plan_dive',
+    'ZHL16B',
+    'ZHL16C',
+    'DecoModel',
+    'Gas',
+    'Cylinder',
+    'TissueState',
+    'DiveSummary',
+    'DecoStopInfo',
+    'StepInfo',
+    'PhaseEnum',
+    'GasUsage',
+    'CNSTracker',
+    'CNSMethod',
+    'OTUTracker',
+]

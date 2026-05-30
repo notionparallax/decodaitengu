@@ -208,7 +208,7 @@ and pressure in first tissue compartment is
 With DecoTengu, we can calculate pressure of nitrogen in the first tissue
 compartment for above dive profile using :py:class:`ZH_L16B_GF` class
 
-    >>> from decotengu.engine import GasMix
+    >>> from decodaitengu.engine import GasMix
     >>> model = ZH_L16B_GF()
     >>> ean32 = GasMix(0, 32, 68, 0)
     >>> data = model.init(1)

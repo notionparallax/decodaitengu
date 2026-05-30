@@ -21,8 +21,8 @@
 Tests for DecoTengu first decompression stop binary search algorithm.
 """
 
-from decotengu.engine import Phase
-from decotengu.alt.bisect import BisectFindFirstStop
+from decodaitengu.engine import Phase
+from decodaitengu.alt.bisect import BisectFindFirstStop
 
 from ..tools import _step, _engine, AIR
 
@@ -43,7 +43,7 @@ class BisectFindFirstStopTestCase(unittest.TestCase):
         self.engine._find_first_stop = BisectFindFirstStop(self.engine)
 
 
-    @mock.patch('decotengu.alt.bisect.bisect_find')
+    @mock.patch('decodaitengu.alt.bisect.bisect_find')
     def test_first_stop_finder(self, f_bf):
         """
         Test bisect first deco stop finder
@@ -59,7 +59,7 @@ class BisectFindFirstStopTestCase(unittest.TestCase):
         self.assertAlmostEqual(2.2, step.abs_p)
 
 
-    @mock.patch('decotengu.alt.bisect.bisect_find')
+    @mock.patch('decodaitengu.alt.bisect.bisect_find')
     def test_first_stop_finder_at_depth(self, f_bf):
         """
         Test bisect first deco stop finder when starting depth is deco stop
@@ -70,7 +70,7 @@ class BisectFindFirstStopTestCase(unittest.TestCase):
         self.assertEqual(step, start)
 
 
-    @mock.patch('decotengu.alt.bisect.bisect_find')
+    @mock.patch('decodaitengu.alt.bisect.bisect_find')
     def test_first_stop_finder_end(self, f_bf):
         """
         Test bisect first deco stop finder when starting and ending depths are at deco stop depth
@@ -86,7 +86,7 @@ class BisectFindFirstStopTestCase(unittest.TestCase):
         self.assertEqual(step, start)
 
 
-    @mock.patch('decotengu.alt.bisect.bisect_find')
+    @mock.patch('decodaitengu.alt.bisect.bisect_find')
     def test_first_stop_finder_steps(self, f_bf):
         """
         Test bisect if first deco stop finder calculates proper amount of steps (depth=0m)
@@ -100,7 +100,7 @@ class BisectFindFirstStopTestCase(unittest.TestCase):
         self.assertEqual(10, f_bf.call_args_list[0][0][0])
 
 
-    @mock.patch('decotengu.alt.bisect.bisect_find')
+    @mock.patch('decodaitengu.alt.bisect.bisect_find')
     def test_first_stop_finder_no_deco(self, f_bf):
         """
         Test bisect first deco stop finder when no deco required

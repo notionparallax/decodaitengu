@@ -21,8 +21,8 @@
 Deco stop stepper integration tests.
 """
 
-from decotengu import create
-from decotengu.alt.naive import DecoStopStepper
+from decodaitengu import create
+from decodaitengu.alt.naive import DecoStopStepper
 
 import unittest
 
@@ -53,8 +53,8 @@ class DecoStepperTestCase(unittest.TestCase):
         data = list(engine.calculate(40, 35))
 
         self.assertTrue(stepper.called)
-        self.assertEquals(7, len(engine.deco_table))
-        self.assertEquals(15, engine.deco_table.total)
+        self.assertEqual(7, len(engine.deco_table))
+        self.assertEqual(15, engine.deco_table.total)
 
 
 # vim: sw=4:et:ai

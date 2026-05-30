@@ -36,7 +36,7 @@ class Conveyor(object):
 
     The conveyor is used to override Engine.calculate method, for example::
 
-        >>> import decotengu
+        >>> import decodaitengu
         >>> engine = decotengu.Engine()
         >>> engine.add_gas(0, 21)
         >>> engine.calculate = Conveyor(engine, 1) # dive step every 1min
@@ -91,7 +91,7 @@ class Conveyor(object):
         The information calculated by the method enables us to increase
         dive step granulity, i.e::
 
-            >>> import decotengu
+            >>> import decodaitengu
             >>> engine = decotengu.Engine()
             >>> conveyor = Conveyor(engine, 1)
             >>> conveyor.trays(1.7, 4)

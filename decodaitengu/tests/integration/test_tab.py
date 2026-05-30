@@ -23,8 +23,8 @@ Tabular tissue calculator integration tests.
 
 from pprint import pformat
 
-from decotengu import create
-from decotengu.alt.tab import tab_engine
+from decodaitengu import create
+from decodaitengu.alt.tab import tab_engine
 
 import unittest
 from . import test_engine as te
@@ -71,8 +71,8 @@ class EngineTestCase(EngineTest):
 
             dt = engine.deco_table
             msg = 'switch depth={}, \n{}'.format(depth, pformat(dt))
-            self.assertEquals(stops[depth], len(dt), msg)
-            self.assertEquals(times[depth], dt.total, msg)
+            self.assertEqual(stops[depth], len(dt), msg)
+            self.assertEqual(times[depth], dt.total, msg)
 
 
     def test_dive_with_travel_gas(self):
@@ -90,7 +90,7 @@ class EngineTestCase(EngineTest):
         engine.add_gas(9, 80)
 
         data = list(engine.calculate(90, 20))
-        self.assertEquals(75, dt.total)
+        self.assertEqual(75, dt.total)
 
 
     def test_last_stop_6m_air(self):
@@ -107,14 +107,14 @@ class EngineTestCase(EngineTest):
         engine.add_gas(0, 21)
 
         data = list(engine.calculate(45, 25))
-        self.assertEquals(6, dt[-1].depth)
-        self.assertEquals(30, dt[-1].time)
+        self.assertEqual(6, dt[-1].depth)
+        self.assertEqual(30, dt[-1].time)
 
         engine.last_stop_6m = False
         data = list(engine.calculate(45, 25))
-        self.assertEquals(3, dt[-1].depth)
+        self.assertEqual(3, dt[-1].depth)
         t = dt[-1].time + dt[-2].time
-        self.assertEquals(22, t)
+        self.assertEqual(22, t)
 
 
     def test_last_stop_ean50(self):
@@ -132,14 +132,14 @@ class EngineTestCase(EngineTest):
         engine.add_gas(24, 50)
 
         data = list(engine.calculate(45, 25))
-        self.assertEquals(6, dt[-1].depth)
-        self.assertEquals(14, dt[-1].time) # or 15 for descent_rate=10
+        self.assertEqual(6, dt[-1].depth)
+        self.assertEqual(14, dt[-1].time) # or 15 for descent_rate=10
 
         engine.last_stop_6m = False
         data = list(engine.calculate(45, 25))
-        self.assertEquals(3, dt[-1].depth)
+        self.assertEqual(3, dt[-1].depth)
         t = dt[-1].time + dt[-2].time
-        self.assertEquals(13, t) # or 13 for descent_rate=10
+        self.assertEqual(13, t) # or 13 for descent_rate=10
 
 
 

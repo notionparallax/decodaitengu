@@ -23,7 +23,7 @@ Decimal override tests.
 
 from decimal import Decimal, localcontext
 
-from decotengu.alt.decimal import DecimalContext
+from decodaitengu.alt.decimal import DecimalContext
 
 import unittest
 
