@@ -1,7 +1,7 @@
 .. rst-class:: align-center
 
 `SOURCE CODE <https://github.com/notionparallax/decodaitengu>`_
-| `ISSUES <https://github.com/notionparallax/decodaitengu/issues>`_
+| `ISSUES <https://github.com/notionparallax/decodaitengu/issues>`_ 
 
 DecoDaiTengu
 ============
