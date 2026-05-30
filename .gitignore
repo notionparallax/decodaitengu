@@ -3,3 +3,12 @@
 *.pyo
 *.swp
 *.swo
+__pycache__/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
