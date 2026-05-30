@@ -21,16 +21,17 @@
 Conveyor to move depth between points in time.
 """
 
-from functools import partial
 import logging
 import math
+from functools import partial
 
-from .engine import Phase
 from .const import EPSILON
+from .engine import Phase
 
 logger = logging.getLogger(__name__)
 
-class Conveyor(object):
+
+class Conveyor:
     """
     Conveyor to expand dive profile into more granular dive steps.
 
@@ -53,6 +54,7 @@ class Conveyor(object):
     :var time_delta: Time delta to increase dive steps granulity [min].
     :var f_calc: Orignal DecoTengu decompression engine calculation method.
     """
+
     def __init__(self, engine, time_delta):
         """
         Create conveyor.
@@ -61,24 +63,17 @@ class Conveyor(object):
         :param time_delta: Time delta to increase dive steps granulity [min].
         """
         if time_delta < 0.1 / 60:
-            logger.warn(
-                'possible calculation problems: time delta below 0.1s not'
-                ' supported'
-            )
+            logger.warn("possible calculation problems: time delta below 0.1s not supported")
         elif time_delta < 1 and math.modf(1 / time_delta)[0] != 0:
             logger.warn(
-                'possible calculation problems: time delta does not divide 1'
-                ' evenly without a reminder'
+                "possible calculation problems: time delta does not divide 1"
+                " evenly without a reminder"
             )
         elif time_delta >= 1 and time_delta % 1 != 0:
-            logger.warn(
-                'possible calculation problems: time delta modulo 1 minute'
-                ' is not zero'
-            )
+            logger.warn("possible calculation problems: time delta modulo 1 minute is not zero")
         self.time_delta = time_delta
         self.engine = engine
         self.f_calc = engine.calculate
-
 
     def trays(self, start_time, end_time):
         """
@@ -109,13 +104,12 @@ class Conveyor(object):
         r = dt - k * self.time_delta
         return k, r
 
-
     def __call__(self, *args, **kw):
         """
         Execute original `Engine.calculate` method and expand dive steps.
         """
         if __debug__:
-            logger.debug('conveyor time delta {}'.format(self.time_delta))
+            logger.debug(f"conveyor time delta {self.time_delta}")
 
         data = self.f_calc(*args, **kw)
         step = next(data)
@@ -123,12 +117,12 @@ class Conveyor(object):
 
         prev = step
         for end in data:
-            if end.phase == 'gas_switch':
+            if end.phase == "gas_switch":
                 yield end
                 continue
 
             # determine descent/ascent/const engine method
-            f_step = self.engine._step_next # default const
+            f_step = self.engine._step_next  # default const
             if end.phase == Phase.DECO_STOP:
                 f_step = partial(self.engine._step_next, phase=Phase.DECO_STOP)
             elif end.phase == Phase.ASCENT:
@@ -140,10 +134,9 @@ class Conveyor(object):
 
             k, tr = self.trays(prev.time, end.time)
             logger.debug(
-                'conveyor time {}min -> {}min, {}bar -> {}bar, steps {},' \
-                'rest {}'.format(
-                    prev.time, end.time, prev.abs_p, end.abs_p, k, tr
-                ))
+                f"conveyor time {prev.time}min -> {end.time}min, {prev.abs_p}bar -> {end.abs_p}bar, steps {k},"
+                f"rest {tr}"
+            )
             step = prev
             for i in range(k):
                 step = f_step(step, self.time_delta, end.gas)
@@ -152,24 +145,24 @@ class Conveyor(object):
             if __debug__:
                 # validate steps expansion: (step + time(tr) = stop) == end?
                 stop = f_step(step, tr, end.gas)
-                assert abs(end.abs_p - stop.abs_p) < EPSILON, \
-                    '{} bar ({}min) vs. {} bar ({}min)'.format(
-                        end.abs_p, end.time, stop.abs_p, stop.time
-                    )
+                assert abs(end.abs_p - stop.abs_p) < EPSILON, (
+                    f"{end.abs_p} bar ({end.time}min) vs. {stop.abs_p} bar ({stop.time}min)"
+                )
 
                 # check nitrogen
                 vt = (v1[0] - v2[0] for v1, v2 in zip(end.data.tissues, stop.data.tissues))
-                dstr = ' '.join(str(v) for v in vt)
+                dstr = " ".join(str(v) for v in vt)
                 assert all(abs(v) < EPSILON for v in vt), dstr
 
                 # check helium
                 vt = (v1[1] - v2[1] for v1, v2 in zip(end.data.tissues, stop.data.tissues))
-                dstr = ' '.join(str(v) for v in vt)
+                dstr = " ".join(str(v) for v in vt)
                 assert all(abs(v) < EPSILON for v in vt), dstr
 
-                logger.debug('step expansion validation ok')
+                logger.debug("step expansion validation ok")
 
             yield end
             prev = end
+
 
 # vim: sw=4:et:ai

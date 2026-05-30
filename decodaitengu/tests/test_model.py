@@ -21,24 +21,24 @@
 DecoTengu calculator tests.
 """
 
-from decodaitengu.engine import Engine, Phase
-from decodaitengu.error import EngineError
-from decodaitengu.model import eq_gf_limit, ZH_L16B_GF, Data, DecoModelValidator
-
-from .tools import _engine, _step, AIR
-
 import unittest
 from unittest import mock
+
+from decodaitengu.engine import Phase
+from decodaitengu.error import EngineError
+from decodaitengu.model import ZH_L16B_GF, Data, DecoModelValidator, eq_gf_limit
+
+from .tools import AIR, _engine, _step
 
 
 class TissueLoadingTestCase(unittest.TestCase):
     """
     Tissue compartment loading with inert gas tests.
     """
+
     def setUp(self):
         self.model = ZH_L16B_GF()
         self.k_const = self.model.n2_k_const
-
 
     def test_air_ascent(self):
         """
@@ -49,7 +49,6 @@ class TissueLoadingTestCase(unittest.TestCase):
         v = loader(1, 3, 0)
         self.assertAlmostEqual(2.96198, v, 4)
 
-
     def test_air_descent(self):
         """
         Test tissue compartment loading - descent by 10m on air
@@ -59,7 +58,6 @@ class TissueLoadingTestCase(unittest.TestCase):
         v = loader(1, 3, 0)
         self.assertAlmostEqual(3.06661, v, 4)
 
-
     def test_ean_ascent(self):
         """
         Test tissue compartment loading - ascent by 10m on EAN32
@@ -68,7 +66,6 @@ class TissueLoadingTestCase(unittest.TestCase):
         loader = self.model._tissue_loader(4, 0.68, -1, self.k_const)
         v = loader(1, 3, 0)
         self.assertAlmostEqual(2.9132, v, 4)
-
 
     def test_ean_descent(self):
         """
@@ -80,18 +77,17 @@ class TissueLoadingTestCase(unittest.TestCase):
         self.assertAlmostEqual(3.00326, v, 4)
 
 
-
 class GradientFactorLimitTestCase(unittest.TestCase):
     """
     Gradient factor limit tests.
     """
+
     def test_gf_limit_n2_30(self):
         """
         Test 30% gradient factor limit for N2
         """
         v = eq_gf_limit(0.3, 3.0, 0, 1.1696, 0.5578, 1.6189, 0.4770)
         self.assertAlmostEqual(2.140137, v, 6)
-
 
     def test_gf_limit_n2_100(self):
         """
@@ -100,14 +96,12 @@ class GradientFactorLimitTestCase(unittest.TestCase):
         v = eq_gf_limit(1.0, 3.0, 0, 1.1696, 0.5578, 1.6189, 0.4770)
         self.assertAlmostEqual(1.020997, v, 6)
 
-
     def test_gf_limit_tx1845_30(self):
         """
         Test 30% gradient factor limit for trimix
         """
         v = eq_gf_limit(0.3, 2.2, 0.8, 1.1696, 0.5578, 1.6189, 0.4770)
         self.assertAlmostEqual(2.074876, v, 6)
-
 
     def test_gf_limit_tx1845_100(self):
         """
@@ -117,11 +111,11 @@ class GradientFactorLimitTestCase(unittest.TestCase):
         self.assertAlmostEqual(0.917308, v, 6)
 
 
-
 class ZH_L16_GFTestCase(unittest.TestCase):
     """
     Buhlmann ZH-L16 decompression model with gradient factors tests.
     """
+
     def test_model_init(self):
         """
         Test deco model initialization
@@ -132,7 +126,6 @@ class ZH_L16_GFTestCase(unittest.TestCase):
         self.assertEqual(m.NUM_COMPARTMENTS, len(tissues))
         expected = tuple([(0.75092706, 0.0)] * m.NUM_COMPARTMENTS)
         self.assertEqual(expected, tissues)
-
 
     def test_tissues_load(self):
         """
@@ -148,7 +141,6 @@ class ZH_L16_GFTestCase(unittest.TestCase):
         self.assertTrue(all(v[0] > 0.79 for v in tissues), tissues)
         self.assertTrue(all(v[1] == 0 for v in tissues), tissues)
 
-
     def test_exp(self):
         """
         Test calculation of exponential function value for time and tissue compartment
@@ -157,17 +149,13 @@ class ZH_L16_GFTestCase(unittest.TestCase):
         v = m._exp(1, 0.6 / 5)
         self.assertAlmostEqual(0.88692043, v)
 
-
-    @mock.patch('decodaitengu.model.eq_gf_limit')
+    @mock.patch("decodaitengu.model.eq_gf_limit")
     def test_ceiling_limit(self, f):
         """
         Test calculation of pressure limit (default gf)
         """
         m = ZH_L16B_GF()
-        data = Data(
-            ((1.5, 0.0), (2.5, 0.), (2.0, 0.0), (2.9, 0.0), (2.6, 0.0)),
-            0.3
-        )
+        data = Data(((1.5, 0.0), (2.5, 0.0), (2.0, 0.0), (2.9, 0.0), (2.6, 0.0)), 0.3)
         limit = (1.0, 2.0, 1.5, 2.4, 2.1)
         f.side_effect = limit
 
@@ -176,25 +164,20 @@ class ZH_L16_GFTestCase(unittest.TestCase):
         v = m.ceiling_limit(data)
         self.assertEqual(2.4, v)
 
-
-    @mock.patch('decodaitengu.model.eq_gf_limit')
+    @mock.patch("decodaitengu.model.eq_gf_limit")
     def test_ceiling_limit_gf(self, f):
         """
         Test calculation of pressure limit (with gf)
         """
         m = ZH_L16B_GF()
-        data = Data(
-            ((1.5, 0.0), (2.5, 0.), (2.0, 0.0), (2.9, 0.0), (2.6, 0.0)),
-            0.3
-        )
+        data = Data(((1.5, 0.0), (2.5, 0.0), (2.0, 0.0), (2.9, 0.0), (2.6, 0.0)), 0.3)
         limit = (1.0, 2.0, 1.5, 2.4, 2.1)
         f.side_effect = limit
 
         v = m.ceiling_limit(data, gf=0.2)
         self.assertEqual(2.4, v)
 
-
-    @mock.patch('decodaitengu.model.eq_gf_limit')
+    @mock.patch("decodaitengu.model.eq_gf_limit")
     def test_gf_limit(self, f):
         """
         Test deco model gradient factor limit calculation
@@ -204,10 +187,7 @@ class ZH_L16_GFTestCase(unittest.TestCase):
         """
         f.side_effect = list(range(1, 17))
         m = ZH_L16B_GF()
-        data = Data(
-            tuple((v, 0.1) for v in range(1, 17)),
-            0.3
-        )
+        data = Data(tuple((v, 0.1) for v in range(1, 17)), 0.3)
 
         v = m.gf_limit(0.3, data)
         self.assertEqual(v, tuple(range(1, 17)))
@@ -229,11 +209,11 @@ class ZH_L16_GFTestCase(unittest.TestCase):
         self.assertEqual(m.HE_B, result)
 
 
-
 class DecoModelValidatorTestCase(unittest.TestCase):
     """
     Decompression model validator tests.
     """
+
     def test_ceiling_limit(self):
         """
         Test ceiling limit validator
@@ -245,9 +225,8 @@ class DecoModelValidatorTestCase(unittest.TestCase):
         validator = DecoModelValidator(engine)
         model.ceiling_limit = mock.MagicMock(return_value=2.19)
 
-        validator._ceiling_limit(s) # no exception expected
+        validator._ceiling_limit(s)  # no exception expected
         model.ceiling_limit.assert_called_once_with(s.data, 0.3)
-
 
     def test_ceiling_limit_error(self):
         """
@@ -263,7 +242,6 @@ class DecoModelValidatorTestCase(unittest.TestCase):
         self.assertRaises(EngineError, validator._ceiling_limit, s)
         model.ceiling_limit.assert_called_once_with(s.data, 0.3)
 
-
     def test_first_stop_at_ceiling(self):
         """
         Test first stop at deco ceiling
@@ -278,10 +256,9 @@ class DecoModelValidatorTestCase(unittest.TestCase):
         model.ceiling_limit = mock.MagicMock(return_value=2.81)
 
         # ascent to 18m should not be possible
-        validator._first_stop_at_ceiling(s1, s2) # no exception expected
+        validator._first_stop_at_ceiling(s1, s2)  # no exception expected
         self.assertTrue(validator._first_stop_checked)
         engine.model.ceiling_limit.assert_called_once_with(s1.data)
-
 
     def test_first_stop_at_ceiling_error(self):
         """
@@ -296,9 +273,7 @@ class DecoModelValidatorTestCase(unittest.TestCase):
         engine.model.ceiling_limit = mock.MagicMock(return_value=2.79)
 
         # ascent to 18m should not be possible, so error expected
-        self.assertRaises(
-            EngineError, validator._first_stop_at_ceiling, s1, s2
-        )
+        self.assertRaises(EngineError, validator._first_stop_at_ceiling, s1, s2)
         self.assertFalse(validator._first_stop_checked)
         engine.model.ceiling_limit.assert_called_once_with(s1.data)
 

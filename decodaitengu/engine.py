@@ -23,20 +23,20 @@ DecoTengu dive decompression engine.
 [mpdfd] Powell, Mark. Deco for Divers, United Kingdom, 2010
 """
 
-from collections import namedtuple, OrderedDict
+import logging
 import math
 import operator
-import logging
+from collections import namedtuple
 
-from .model import ZH_L16B_GF
-from .error import ConfigError, EngineError
-from .ft import recurse_while, bisect_find
-from .flow import coroutine
 from . import const
+from .error import ConfigError, EngineError
+from .ft import bisect_find, recurse_while
+from .model import ZH_L16B_GF
 
 logger = logging.getLogger(__name__)
 
-class Phase(object):
+
+class Phase:
     """
     Dive phase enumeration.
 
@@ -59,17 +59,19 @@ class Phase(object):
         Gas mix switch. Current dive step is at the same depth as previous
         one. The time of current and previous dive steps is the same.
     """
-    START = 'start'
-    DESCENT = 'descent'
-    CONST = 'const'
-    ASCENT = 'ascent'
-    DECO_STOP = 'deco_stop'
-    GAS_SWITCH = 'gas_switch'
+
+    START = "start"
+    DESCENT = "descent"
+    CONST = "const"
+    ASCENT = "ascent"
+    DECO_STOP = "deco_stop"
+    GAS_SWITCH = "gas_switch"
 
 
-Step = namedtuple('Step', 'phase abs_p time gas data')
-Step.__repr__ = lambda s: 'Step(phase="{}", abs_p={:.4f}, time={:.4f},' \
-    ' gf={:.4f})'.format(s.phase, s.abs_p, s.time, s.data.gf)
+Step = namedtuple("Step", "phase abs_p time gas data")
+Step.__repr__ = lambda s: (
+    f'Step(phase="{s.phase}", abs_p={s.abs_p:.4f}, time={s.time:.4f}, gf={s.data.gf:.4f})'
+)
 Step.__doc__ = """
 Dive step information.
 
@@ -80,7 +82,7 @@ Dive step information.
 :var data: Decompression model data.
 """
 
-GasMix = namedtuple('GasMix', 'depth o2 n2 he')
+GasMix = namedtuple("GasMix", "depth o2 n2 he")
 GasMix.__doc__ = """
 Gas mix configuration.
 
@@ -90,7 +92,7 @@ Gas mix configuration.
 :var he: Helium percentage.
 """
 
-DecoStop = namedtuple('DecoStop', 'depth time')
+DecoStop = namedtuple("DecoStop", "depth time")
 DecoStop.__doc__ = """
 Dive decompression stop information.
 
@@ -99,7 +101,7 @@ Dive decompression stop information.
 """
 
 
-class Engine(object):
+class Engine:
     """
     DecoTengu decompression engine.
 
@@ -116,6 +118,7 @@ class Engine(object):
     :var _deco_stop_search_time: Time limit for decompression stop linear
         search.
     """
+
     def __init__(self):
         super().__init__()
         self.model = ZH_L16B_GF()
@@ -133,7 +136,6 @@ class Engine(object):
         self._meter_to_bar = const.METER_TO_BAR
         self._p3m = 3 * const.METER_TO_BAR
 
-
     def _to_pressure(self, depth):
         """
         Convert depth in meters to absolute pressure in bars.
@@ -141,7 +143,6 @@ class Engine(object):
         :param depth: Depth in meters.
         """
         return depth * self._meter_to_bar + self.surface_pressure
-
 
     def _to_depth(self, abs_p):
         """
@@ -152,7 +153,6 @@ class Engine(object):
         depth = (abs_p - self.surface_pressure) / self._meter_to_bar
         return round(depth, const.SCALE)
 
-
     def _time_to_pressure(self, time, rate):
         """
         Convert time into pressure change using depth change rate.
@@ -161,7 +161,6 @@ class Engine(object):
         :param rate: Rate of depth change [m/min].
         """
         return time * rate * self._meter_to_bar
-
 
     def _pressure_to_time(self, pressure, rate):
         """
@@ -174,7 +173,6 @@ class Engine(object):
         """
         return pressure / rate / self._meter_to_bar
 
-
     def _ceil_pressure_3m(self, abs_p):
         """
         Calculate absolute pressure value, so when converted to meters its
@@ -183,8 +181,7 @@ class Engine(object):
         :param abs_p: Input absolute pressure [bar].
         """
         v = math.ceil((abs_p - self.surface_pressure) / self._p3m)
-        return  v * self._p3m + self.surface_pressure
-
+        return v * self._p3m + self.surface_pressure
 
     def _n_stops(self, start_abs_p, end_abs_p=None):
         """
@@ -199,7 +196,6 @@ class Engine(object):
             end_abs_p = self.surface_pressure
         k = (start_abs_p - end_abs_p) / self._p3m
         return round(k)
-
 
     def _inv_limit(self, abs_p, data):
         """
@@ -216,7 +212,6 @@ class Engine(object):
         """
         return abs_p >= self.model.ceiling_limit(data)
 
-
     def _can_ascend(self, abs_p, time, data, gf=None):
         """
         Check if a diver can ascend from current depth without violating
@@ -229,7 +224,6 @@ class Engine(object):
         """
         p = abs_p - self._time_to_pressure(time, self.ascent_rate)
         return p >= self.model.ceiling_limit(data, gf=gf)
-
 
     def _step_start(self, abs_p, gas):
         """
@@ -248,8 +242,7 @@ class Engine(object):
         step = Step(Phase.START, abs_p, 0, gas, data)
         return step
 
-
-    def _step_next(self, step, time, gas, phase='const'):
+    def _step_next(self, step, time, gas, phase="const"):
         """
         Calculate next dive step at constant depth and advanced by
         specified amount of time.
@@ -263,8 +256,7 @@ class Engine(object):
         data = self._tissue_pressure_const(step.abs_p, time, gas, step.data)
         return Step(phase, step.abs_p, step.time + time, gas, data)
 
-
-    def _step_next_descent(self, step, time, gas, phase='descent'):
+    def _step_next_descent(self, step, time, gas, phase="descent"):
         """
         Calculate next dive step when descent is performed for specified
         period of time.
@@ -278,8 +270,7 @@ class Engine(object):
         pressure = step.abs_p + self._time_to_pressure(time, self.descent_rate)
         return Step(phase, pressure, step.time + time, gas, data)
 
-
-    def _step_next_ascent(self, step, time, gas, gf=None, phase='ascent'):
+    def _step_next_ascent(self, step, time, gas, gf=None, phase="ascent"):
         """
         Calculate next dive step when ascent is performed for specified
         period of time.
@@ -300,7 +291,6 @@ class Engine(object):
             data = data._replace(gf=gf)
         return Step(phase, pressure, step.time + time, gas, data)
 
-
     def _tissue_pressure_const(self, abs_p, time, gas, data):
         """
         Calculate tissues gas loading after exposure for specified amount
@@ -312,7 +302,6 @@ class Engine(object):
         :param data: Decompression model data.
         """
         return self.model.load(abs_p, time, gas, 0, data)
-
 
     def _tissue_pressure_descent(self, abs_p, time, gas, data):
         """
@@ -327,7 +316,6 @@ class Engine(object):
         data = self.model.load(abs_p, time, gas, rate, data)
         return data
 
-
     def _tissue_pressure_ascent(self, abs_p, time, gas, data):
         """
         Calculate tissues gas loading after ascent.
@@ -341,7 +329,6 @@ class Engine(object):
         tp = self.model.load(abs_p, time, gas, rate, data)
         return tp
 
-
     def _switch_gas(self, step, gas):
         """
         Switch gas mix.
@@ -350,9 +337,8 @@ class Engine(object):
         """
         step = step._replace(phase=Phase.GAS_SWITCH, gas=gas)
         if __debug__:
-            logger.debug('switched to gas mix {} at {}'.format(gas, step))
+            logger.debug(f"switched to gas mix {gas} at {step}")
         return step
-
 
     def _dive_descent(self, abs_p, gas_list):
         """
@@ -371,7 +357,7 @@ class Engine(object):
 
         stages = self._descent_stages(abs_p, gas_list)
         for i, (depth, gas) in enumerate(stages):
-            if i > 0: # perform gas switch
+            if i > 0:  # perform gas switch
                 step = self._switch_gas(step, gas)
                 yield step
             time = self._pressure_to_time(depth - step.abs_p, self.descent_rate)
@@ -384,8 +370,7 @@ class Engine(object):
             step = self._switch_gas(step, last)
             yield step
 
-        logger.debug('descent finished at {:.4f}bar'.format(step.abs_p))
-
+        logger.debug(f"descent finished at {step.abs_p:.4f}bar")
 
     def _dive_ascent(self, start, gas_list):
         """
@@ -424,7 +409,6 @@ class Engine(object):
         stages = self._deco_ascent_stages(step.abs_p, gas_list)
         yield from self._deco_staged_ascent(step, stages)
 
-
     def _ndl_ascent(self, start, gas):
         """
         Check if NDL ascent to the surface is possible from starting dive
@@ -453,12 +437,11 @@ class Engine(object):
         if step.abs_p < limit:
             step = None
             if __debug__:
-                logger.debug('deco dive')
+                logger.debug("deco dive")
         else:
             if __debug__:
-                logger.debug('ndl dive')
+                logger.debug("ndl dive")
         return step
-
 
     def _find_first_stop(self, start, abs_p, gas):
         """
@@ -484,7 +467,7 @@ class Engine(object):
             switch depth.
         :param gas: Gas mix configuration.
         """
-        assert start.abs_p > abs_p, '{} vs. {}'.format(start.abs_p, abs_p)
+        assert start.abs_p > abs_p, f"{start.abs_p} vs. {abs_p}"
         assert self._to_depth(abs_p) % 3 == 0, self._to_depth(abs_p)
 
         model = self.model
@@ -497,8 +480,7 @@ class Engine(object):
 
         if __debug__:
             logger.debug(
-                'find first stop: check ascent from {}bar by {}min to {}bar (start)'
-                .format(step.abs_p, t, limit)
+                f"find first stop: check ascent from {step.abs_p}bar by {t}min to {limit}bar (start)"
             )
         while step.abs_p > limit and step.abs_p > abs_p:
             step = self._step_next_ascent(step, t, gas)
@@ -509,8 +491,7 @@ class Engine(object):
 
             if __debug__:
                 logger.debug(
-                    'find first stop: check ascent from {}bar by {}min to {}bar'
-                    .format(step.abs_p, t, limit)
+                    f"find first stop: check ascent from {step.abs_p}bar by {t}min to {limit}bar"
                 )
 
         stop = step
@@ -518,27 +499,22 @@ class Engine(object):
         if __debug__:
             depth = self._to_depth(stop.abs_p)
 
-            assert depth % 3 == 0, \
-                'Invalid first stop depth pressure {}bar ({}m)' \
-                .format(stop.abs_p, depth)
+            assert depth % 3 == 0, f"Invalid first stop depth pressure {stop.abs_p}bar ({depth}m)"
 
             if start is stop:
-                logger.debug('find first stop: at first deco stop already')
+                logger.debug("find first stop: at first deco stop already")
             elif stop.abs_p > abs_p:
                 limit = self.model.ceiling_limit(stop.data)
                 logger.debug(
-                    'find first stop: found at {}m ({}bar), ascent time={},'
-                    ' limit={}'.format(
-                        depth, stop.abs_p, stop.time - start.time, limit
-                    )
+                    f"find first stop: found at {depth}m ({stop.abs_p}bar), ascent time={stop.time - start.time},"
+                    f" limit={limit}"
                 )
             else:
-                logger.debug('find first stop: no decompression stop found')
+                logger.debug("find first stop: no decompression stop found")
 
         assert stop.abs_p - abs_p > -const.EPSILON, stop
 
         return stop
-
 
     def _descent_stages(self, end_abs_p, gas_list):
         """
@@ -573,7 +549,6 @@ class Engine(object):
         if abs(_pressure(last) - end_abs_p) > 0:
             yield (end_abs_p, last)
 
-
     def _free_ascent_stages(self, gas_list):
         """
         Calculate stages for deco-free ascent.
@@ -595,11 +570,9 @@ class Engine(object):
             mixes.
         """
         mixes = zip(gas_list[:-1], gas_list[1:])
-        _pressure = lambda mix: \
-            self._to_pressure(((mix.depth - 1) // 3 + 1) * 3)
+        _pressure = lambda mix: self._to_pressure(((mix.depth - 1) // 3 + 1) * 3)
         yield from ((_pressure(m2), m1) for m1, m2 in mixes)
         yield (self.surface_pressure, gas_list[-1])
-
 
     def _deco_ascent_stages(self, start_abs_p, gas_list):
         """
@@ -629,11 +602,9 @@ class Engine(object):
         mixes = zip(gas_list[:-1], gas_list[1:])
         _pressure = lambda mix: self._to_pressure(mix.depth // 3 * 3)
         yield from (
-            (_pressure(m2), m1) for m1, m2 in mixes
-            if self._to_pressure(m2.depth) < start_abs_p
+            (_pressure(m2), m1) for m1, m2 in mixes if self._to_pressure(m2.depth) < start_abs_p
         )
         yield (self.surface_pressure, gas_list[-1])
-
 
     def _validate_gas_list(self, depth):
         """
@@ -655,36 +626,28 @@ class Engine(object):
         :param depth: Maximum dive depth.
         """
         if not self._gas_list:
-            raise ConfigError('No bottom gas mix configured')
+            raise ConfigError("No bottom gas mix configured")
 
         if not self._travel_gas_list and self._gas_list[0].depth != 0:
-            raise ConfigError('Bottom gas mix switch depth is not 0m')
+            raise ConfigError("Bottom gas mix switch depth is not 0m")
 
         k = len(self._travel_gas_list)
         depths = (m.depth for m in self._travel_gas_list)
         if k and len(set(depths)) != k:
-            raise ConfigError(
-                'Two or more travel gas mixes have the same switch depth'
-            )
+            raise ConfigError("Two or more travel gas mixes have the same switch depth")
 
         k = len(self._gas_list[1:])
         depths = [m.depth for m in self._gas_list[1:]]
         if len(set(depths)) != k:
-            raise ConfigError(
-                'Two or more decompression gas mixes have the same'
-                ' switch depth'
-            )
+            raise ConfigError("Two or more decompression gas mixes have the same switch depth")
 
         if any(d == 0 for d in depths):
-            raise ConfigError('Decompression gas mix switch depth is 0m')
+            raise ConfigError("Decompression gas mix switch depth is 0m")
 
         mixes = self._gas_list + self._travel_gas_list
         mixes = [m for m in mixes if m.depth > depth]
         if mixes:
-            raise ConfigError(
-                'Gas mix switch depth deeper than maximum dive depth'
-            )
-
+            raise ConfigError("Gas mix switch depth deeper than maximum dive depth")
 
     def _ascent_switch_gas(self, step, gas):
         """
@@ -711,7 +674,7 @@ class Engine(object):
         :param gas: Gas to switch to.
         """
         gp = self._to_pressure(gas.depth)
-        logger.debug('ascent gas switch to {} at {}bar'.format(gas, step.abs_p))
+        logger.debug(f"ascent gas switch to {gas} at {step.abs_p}bar")
         assert step.abs_p - gp < self._p3m
         if abs(step.abs_p - gp) < const.EPSILON:
             steps = (self._switch_gas(step, gas),)
@@ -730,7 +693,6 @@ class Engine(object):
             steps = (s1, s2, s3)
         return steps
 
-
     def _free_staged_ascent(self, start, stages):
         """
         Perform staged ascent until first decompression stop.
@@ -742,35 +704,34 @@ class Engine(object):
         """
         step = start
         for depth, gas in stages:
-            if step.gas != gas: # first step might not need gas switch
+            if step.gas != gas:  # first step might not need gas switch
                 # if gas switch drives us into deco zone, then stop ascent
                 # leaving `step` as first decompression stop
                 if __debug__:
-                    logger.debug('attempt to switch gas {} at {}'.format(gas, step))
+                    logger.debug(f"attempt to switch gas {gas} at {step}")
                 gs_steps = self._ascent_switch_gas(step, gas)
                 if self._inv_limit(gs_steps[-1].abs_p, gs_steps[-1].data):
                     step = gs_steps[-1]
                     yield from gs_steps
                     if __debug__:
-                        logger.debug('gas switch performed')
+                        logger.debug("gas switch performed")
                 else:
                     if __debug__:
-                        logger.debug('gas switch into deco zone, revert')
+                        logger.debug("gas switch into deco zone, revert")
                     break
 
             # check if there is first decompression stop at this ascent
             # stage
             s = self._find_first_stop(step, depth, gas)
             if s is step:
-                break # already at deco zone
+                break  # already at deco zone
             else:
                 step = s
                 yield step
-                if abs(step.abs_p - depth) > const.EPSILON: # deco stop found
+                if abs(step.abs_p - depth) > const.EPSILON:  # deco stop found
                     break
                 # else: at target depth of ascent stage without deco stop,
                 #       so move to next stage
-
 
     def _deco_staged_ascent(self, start, stages):
         """
@@ -796,10 +757,7 @@ class Engine(object):
 
             # execute deco stop
             end = self._deco_stop(step, time, gas, gf)
-            self.deco_table.append(
-                self._to_depth(step.abs_p),
-                end.time - step.time
-            )
+            self.deco_table.append(self._to_depth(step.abs_p), end.time - step.time)
             step = end
             yield step
 
@@ -808,8 +766,7 @@ class Engine(object):
             yield step
 
         if __debug__:
-            logger.debug('deco engine: gf at surface={:.4f}'.format(step.data.gf))
-
+            logger.debug(f"deco engine: gf at surface={step.data.gf:.4f}")
 
     def _deco_stops(self, step, stages):
         """
@@ -835,7 +792,7 @@ class Engine(object):
         gf = step.data.gf
 
         if __debug__:
-            logger.debug('deco engine: gf step={:.4}'.format(gf_step))
+            logger.debug(f"deco engine: gf step={gf_step:.4}")
 
         abs_p = step.abs_p
         stop_at_6m = self.surface_pressure + 2 * self._p3m
@@ -852,7 +809,6 @@ class Engine(object):
                     yield depth, gas, ts_3m, gf
             abs_p = depth
 
-
     def _deco_stop(self, step, next_time, gas, gf):
         """
         Calculate decompression stop.
@@ -868,66 +824,56 @@ class Engine(object):
         """
         if __debug__:
             depth = self._to_depth(step.abs_p)
-            logger.debug('deco stop: calculate at {}m'.format(depth))
+            logger.debug(f"deco stop: calculate at {depth}m")
             assert depth % 3 == 0 and depth > 0, depth
 
         # there are a lot of 1 minute deco stops, so check if we can ascend
         # after 1 minute first; otherwise continue searching for the
         # decompression stop length
-        data = self._tissue_pressure_const(
-            step.abs_p, const.MINUTE, gas, step.data
-        )
+        data = self._tissue_pressure_const(step.abs_p, const.MINUTE, gas, step.data)
         if self._can_ascend(step.abs_p, next_time, data, gf):
-            return Step(
-                Phase.DECO_STOP, step.abs_p, step.time + const.MINUTE, gas, data
-            )
+            return Step(Phase.DECO_STOP, step.abs_p, step.time + const.MINUTE, gas, data)
 
         max_time = self._deco_stop_search_time
         # next_f(arg=(time, data)): (time, data) <- track both time and deco
         # data
         next_f = lambda time, data: (
             time + max_time,
-            self._tissue_pressure_const(step.abs_p, max_time, gas, data)
+            self._tissue_pressure_const(step.abs_p, max_time, gas, data),
         )
-        inv_f = lambda time, data: \
-            not self._can_ascend(step.abs_p, next_time, data, gf)
+        inv_f = lambda time, data: not self._can_ascend(step.abs_p, next_time, data, gf)
 
         time, data = recurse_while(inv_f, next_f, const.MINUTE, data)
 
         if __debug__:
-            logger.debug(
-                'deco stop: linear find finished after {}min'.format(time)
-            )
-            logger.debug('deco stop: deco data {}'.format(data))
+            logger.debug(f"deco stop: linear find finished after {time}min")
+            logger.debug(f"deco stop: deco data {data}")
 
         # start with `data` returned by `recurse_while`, so no need to add
         # `time`
         next_f = lambda k: self._tissue_pressure_const(step.abs_p, k, gas, data)
         # should we stay at deco stop?
-        exec_deco_stop = lambda k: \
-            not self._can_ascend(step.abs_p, next_time, next_f(k), gf)
+        exec_deco_stop = lambda k: not self._can_ascend(step.abs_p, next_time, next_f(k), gf)
 
         # ascent is possible after self._deco_stop_search_time, so
         # check for self._deco_stop_search_time - 1
         n = self._deco_stop_search_time - 1
         k = bisect_find(n, exec_deco_stop)
-        k += 1 # at k diver should still stay at deco stop as
-               # exec_deco_stop is true - ascent minute later
+        k += 1  # at k diver should still stay at deco stop as
+        # exec_deco_stop is true - ascent minute later
 
         # final time of a deco stop
         time = time + k
 
         if __debug__:
             logger.debug(
-                'deco stop: search completed {}bar, {}min, n2={.n2}%,'
-                ' gf={:.4}, next gf={:.4}'.format(
-                    step.abs_p, time, gas, step.data.gf, gf
-                ))
+                f"deco stop: search completed {step.abs_p}bar, {time}min, n2={gas.n2}%,"
+                f" gf={step.data.gf:.4}, next gf={gf:.4}"
+            )
             assert time % 1 == 0 and time > 0, time
 
         step = self._step_next(step, time, gas, phase=Phase.DECO_STOP)
         return step
-
 
     def add_gas(self, depth, o2, he=0, travel=False):
         """
@@ -951,7 +897,6 @@ class Engine(object):
         else:
             self._gas_list.append(GasMix(depth, o2, 100 - o2 - he, he))
 
-
     def calculate(self, depth, time, descent=True):
         """
         Start dive profile calculation for specified dive depth and bottom
@@ -974,7 +919,7 @@ class Engine(object):
         self._validate_gas_list(depth)
 
         # prepare travel and bottom gas mixes
-        depth_key = operator.attrgetter('depth')
+        depth_key = operator.attrgetter("depth")
         bottom_gas = self._gas_list[0]
         gas_list = sorted(self._travel_gas_list, key=depth_key)
         gas_list.append(bottom_gas)
@@ -994,18 +939,15 @@ class Engine(object):
 
         t = time - step.time
         if t <= 0:
-            raise EngineError('Bottom time shorter than descent time')
+            raise EngineError("Bottom time shorter than descent time")
 
         if __debug__:
-            logger.debug(
-                'bottom time {}min (descent is {}min)'.format(t, step.time)
-            )
+            logger.debug(f"bottom time {t}min (descent is {step.time}min)")
         assert t > 0
         step = self._step_next(step, t, bottom_gas)
         yield step
 
         yield from self._dive_ascent(step, gas_list)
-
 
 
 class DecoTable(list):
@@ -1018,13 +960,13 @@ class DecoTable(list):
 
     .. seealso:: :class:`decotengu.engine.DecoStop`
     """
+
     @property
     def total(self):
         """
         Total decompression time.
         """
         return sum(s.time for s in self)
-
 
     def append(self, depth, time):
         """
@@ -1034,9 +976,7 @@ class DecoTable(list):
         :param time: Time of decompression stop [min].
         """
         if __debug__:
-            logger.debug(
-                'deco table: adding {}m {}min stop'.format(depth, time)
-            )
+            logger.debug(f"deco table: adding {depth}m {time}min stop")
 
         time = round(time, const.SCALE)
         stop = DecoStop(depth, time)
@@ -1046,7 +986,7 @@ class DecoTable(list):
 
         super().append(stop)
         if __debug__:
-            logger.debug('deco table: added {}'.format(stop))
+            logger.debug(f"deco table: added {stop}")
 
 
 # vim: sw=4:et:ai

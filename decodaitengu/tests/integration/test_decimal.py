@@ -21,32 +21,29 @@
 Decimal override integration tests.
 """
 
+import unittest
 from decimal import Decimal
 
 from decodaitengu import create
-from decodaitengu.alt.tab import tab_engine
 from decodaitengu.alt.decimal import DecimalContext
-
-import unittest
-from . import test_engine as te
+from decodaitengu.alt.tab import tab_engine
 
 
 class EngineTest(unittest.TestCase):
     """
     Abstract class for all DecoTengu engine test cases.
     """
+
     def _engine(self, *args, **kw):
         engine = create(*args, **kw)
         tab_engine(engine)
         return engine
-
 
     def setUp(self):
         self.ctx = DecimalContext()
         self.ctx.__enter__()
         self.engine = self._engine()
         self.dt = self.engine.deco_table
-
 
     def tearDown(self):
         self.ctx.__exit__()
@@ -56,6 +53,7 @@ class ProfileTestCase(EngineTest):
     """
     Integration tests for various dive profiles
     """
+
     def test_deepstop(self):
         """
         Test for dive profile presented in Baker "Deep Stops" paper (using decimal override)
@@ -75,25 +73,25 @@ class ProfileTestCase(EngineTest):
         # it seems the dive profile in Baker paper does not take into
         # account descent
         data = list(engine.calculate(Decimal(90), Decimal(20), descent=False))
-        self.assertEqual((57, 1), dt[0]) # first stop deeper
+        self.assertEqual((57, 1), dt[0])  # first stop deeper
         self.assertEqual((54, 1), dt[1])
         self.assertEqual((51, 1), dt[2])
         self.assertEqual((48, 1), dt[3])
         self.assertEqual((45, 1), dt[4])
         self.assertEqual((42, 1), dt[5])
         self.assertEqual((39, 2), dt[6])
-        self.assertEqual((36, 2), dt[7]) # 1 minute less
-        self.assertEqual((33, 2), dt[8]) # 1 minute more
-        self.assertEqual((30, 1), dt[9]) # 1 minute less
+        self.assertEqual((36, 2), dt[7])  # 1 minute less
+        self.assertEqual((33, 2), dt[8])  # 1 minute more
+        self.assertEqual((30, 1), dt[9])  # 1 minute less
         self.assertEqual((27, 2), dt[10])
-        self.assertEqual((24, 3), dt[11]) # 1 minute more
-        self.assertEqual((21, 3), dt[12]) # 1 minute less
-        self.assertEqual((18, 4), dt[13]) # 1 minutes more
+        self.assertEqual((24, 3), dt[11])  # 1 minute more
+        self.assertEqual((21, 3), dt[12])  # 1 minute less
+        self.assertEqual((18, 4), dt[13])  # 1 minutes more
         self.assertEqual((15, 6), dt[14])
-        self.assertEqual((12, 9), dt[15]) # 1 minute more
+        self.assertEqual((12, 9), dt[15])  # 1 minute more
         self.assertEqual((9, 10), dt[16])
-        self.assertEqual((6, 19), dt[17]) # 3 minutes more
-        self.assertEqual((3, 34), dt[18]) # 2 minutes more
+        self.assertEqual((6, 19), dt[17])  # 3 minutes more
+        self.assertEqual((3, 34), dt[18])  # 2 minutes more
 
 
 # vim: sw=4:et:ai

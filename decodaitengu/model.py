@@ -372,17 +372,17 @@ References
   source code <https://bitbucket.org/heinrichsweikamp/ostc2_code>`_.
 """
 
-from collections import namedtuple
-import math
 import logging
+import math
+from collections import namedtuple
 
-from .error import EngineError
 from . import const
+from .error import EngineError
 from .flow import coroutine
 
 logger = logging.getLogger(__name__)
 
-Data = namedtuple('Data', 'tissues gf')
+Data = namedtuple("Data", "tissues gf")
 Data.__doc__ = """
 Data for ZH-L16-GF decompression model.
 
@@ -414,8 +414,7 @@ def eq_gf_limit(gf, p_n2, p_he, a_n2, b_n2, a_he, b_he):
     return (p - a * gf) / (gf / b + 1 - gf)
 
 
-
-class ZH_L16_GF(object):
+class ZH_L16_GF:
     """
     Base abstract class for Buhlmann ZH-L16 decompression model with
     gradient factors by Erik Baker - ZH-L16B-GF.
@@ -428,6 +427,7 @@ class ZH_L16_GF(object):
     :var he_k_const: Gas decay constants :math:`k` for helium for each
         tissues compartment.
     """
+
     NUM_COMPARTMENTS = 16
     N2_A = None
     N2_B = None
@@ -435,8 +435,8 @@ class ZH_L16_GF(object):
     HE_B = None
     N2_HALF_LIFE = None
     HE_HALF_LIFE = None
-    START_P_N2 = 0.7902 # starting pressure of N2 in tissues
-    START_P_HE = 0.0    # starting pressure of He in tissues
+    START_P_N2 = 0.7902  # starting pressure of N2 in tissues
+    START_P_HE = 0.0  # starting pressure of He in tissues
 
     def __init__(self):
         """
@@ -449,7 +449,6 @@ class ZH_L16_GF(object):
         self.gf_high = 0.85
 
         self.water_vapour_pressure = const.WATER_VAPOUR_PRESSURE_DEFAULT
-
 
     def init(self, surface_pressure):
         """
@@ -464,7 +463,6 @@ class ZH_L16_GF(object):
         p_he = self.START_P_HE
         data = Data(tuple([(p_n2, p_he)] * self.NUM_COMPARTMENTS), self.gf_low)
         return data
-
 
     def load(self, abs_p, time, gas, rate, data):
         """
@@ -491,7 +489,6 @@ class ZH_L16_GF(object):
         )
         return Data(tp, data.gf)
 
-
     def ceiling_limit(self, data, gf=None):
         """
         Calculate pressure of ascent ceiling limit using decompression
@@ -514,7 +511,6 @@ class ZH_L16_GF(object):
         """
         return max(self.gf_limit(gf, data))
 
-
     def _k_const(self, half_life):
         """
         Calculate gas decay constant :math:`k` for each tissue compartment
@@ -524,7 +520,6 @@ class ZH_L16_GF(object):
             compartment.
         """
         return tuple(const.LOG_2 / v for v in half_life)
-
 
     def _exp(self, time, k):
         """
@@ -536,7 +531,6 @@ class ZH_L16_GF(object):
         """
         return math.exp(-k * time)
 
-
     def _tissue_loaders(self, abs_p, gas, rate):
         """
         Create function to load tissue compartment with inert gas for each
@@ -546,14 +540,9 @@ class ZH_L16_GF(object):
         :param gas: Gas mix configuration.
         :param rate: Pressure rate change [bar/min] (:math:`P_{rate}`).
         """
-        n2_loader = self._tissue_loader(
-            abs_p, gas.n2 / 100, rate, self.n2_k_const
-        )
-        he_loader = self._tissue_loader(
-            abs_p, gas.he / 100, rate, self.he_k_const
-        )
+        n2_loader = self._tissue_loader(abs_p, gas.n2 / 100, rate, self.n2_k_const)
+        he_loader = self._tissue_loader(abs_p, gas.he / 100, rate, self.he_k_const)
         return n2_loader, he_loader
-
 
     def _tissue_loader(self, abs_p, f_gas, rate, k_const):
         """
@@ -581,14 +570,14 @@ class ZH_L16_GF(object):
         """
         p_alv = f_gas * (abs_p - self.water_vapour_pressure)
         r = f_gas * rate
+
         def f(time, p_i, tissue_no):
             assert time > 0
             k = k_const[tissue_no]
-            return p_alv + r * (time - 1 / k) - (p_alv - p_i - r / k) \
-                * self._exp(time, k)
-            #return p_alv + r * (t - 1 / k) - (p_alv - p_i - r / k) * math.exp(-k * t)
-        return f
+            return p_alv + r * (time - 1 / k) - (p_alv - p_i - r / k) * self._exp(time, k)
+            # return p_alv + r * (t - 1 / k) - (p_alv - p_i - r / k) * math.exp(-k * t)
 
+        return f
 
     def gf_limit(self, gf, data):
         """
@@ -612,70 +601,237 @@ class ZH_L16_GF(object):
         )
 
 
-
-class ZH_L16B_GF(ZH_L16_GF): # source: gfdeco.f by Baker
+class ZH_L16B_GF(ZH_L16_GF):  # source: gfdeco.f by Baker
     """
     ZH-L16B-GF decompression model.
     """
+
     N2_A = (
-        1.1696, 1.0000, 0.8618, 0.7562, 0.6667, 0.5600, 0.4947, 0.4500,
-        0.4187, 0.3798, 0.3497, 0.3223, 0.2850, 0.2737, 0.2523, 0.2327,
+        1.1696,
+        1.0000,
+        0.8618,
+        0.7562,
+        0.6667,
+        0.5600,
+        0.4947,
+        0.4500,
+        0.4187,
+        0.3798,
+        0.3497,
+        0.3223,
+        0.2850,
+        0.2737,
+        0.2523,
+        0.2327,
     )
     N2_B = (
-        0.5578, 0.6514, 0.7222, 0.7825, 0.8126, 0.8434, 0.8693, 0.8910,
-        0.9092, 0.9222, 0.9319, 0.9403, 0.9477, 0.9544, 0.9602, 0.9653,
+        0.5578,
+        0.6514,
+        0.7222,
+        0.7825,
+        0.8126,
+        0.8434,
+        0.8693,
+        0.8910,
+        0.9092,
+        0.9222,
+        0.9319,
+        0.9403,
+        0.9477,
+        0.9544,
+        0.9602,
+        0.9653,
     )
     HE_A = (
-        1.6189, 1.3830, 1.1919, 1.0458, 0.9220, 0.8205, 0.7305, 0.6502,
-        0.5950, 0.5545, 0.5333, 0.5189, 0.5181, 0.5176, 0.5172, 0.5119,
+        1.6189,
+        1.3830,
+        1.1919,
+        1.0458,
+        0.9220,
+        0.8205,
+        0.7305,
+        0.6502,
+        0.5950,
+        0.5545,
+        0.5333,
+        0.5189,
+        0.5181,
+        0.5176,
+        0.5172,
+        0.5119,
     )
     HE_B = (
-        0.4770, 0.5747, 0.6527, 0.7223, 0.7582, 0.7957, 0.8279, 0.8553,
-        0.8757, 0.8903, 0.8997, 0.9073, 0.9122, 0.9171, 0.9217, 0.9267,
+        0.4770,
+        0.5747,
+        0.6527,
+        0.7223,
+        0.7582,
+        0.7957,
+        0.8279,
+        0.8553,
+        0.8757,
+        0.8903,
+        0.8997,
+        0.9073,
+        0.9122,
+        0.9171,
+        0.9217,
+        0.9267,
     )
     N2_HALF_LIFE = (
-        5.0, 8.0, 12.5, 18.5, 27.0, 38.3, 54.3, 77.0, 109.0,
-        146.0, 187.0, 239.0, 305.0, 390.0, 498.0, 635.0,
+        5.0,
+        8.0,
+        12.5,
+        18.5,
+        27.0,
+        38.3,
+        54.3,
+        77.0,
+        109.0,
+        146.0,
+        187.0,
+        239.0,
+        305.0,
+        390.0,
+        498.0,
+        635.0,
     )
     HE_HALF_LIFE = (
-        1.88, 3.02, 4.72, 6.99, 10.21, 14.48, 20.53, 29.11,
-        41.20, 55.19, 70.69, 90.34, 115.29, 147.42, 188.24, 240.03,
+        1.88,
+        3.02,
+        4.72,
+        6.99,
+        10.21,
+        14.48,
+        20.53,
+        29.11,
+        41.20,
+        55.19,
+        70.69,
+        90.34,
+        115.29,
+        147.42,
+        188.24,
+        240.03,
     )
 
 
-
-class ZH_L16C_GF(ZH_L16_GF): # source: ostc firmware code
+class ZH_L16C_GF(ZH_L16_GF):  # source: ostc firmware code
     """
     ZH-L16C-GF decompression model.
     """
+
     N2_A = (
-        1.2599, 1.0000, 0.8618, 0.7562, 0.6200, 0.5043, 0.4410, 0.4000,
-        0.3750, 0.3500, 0.3295, 0.3065, 0.2835, 0.2610, 0.2480, 0.2327,
+        1.2599,
+        1.0000,
+        0.8618,
+        0.7562,
+        0.6200,
+        0.5043,
+        0.4410,
+        0.4000,
+        0.3750,
+        0.3500,
+        0.3295,
+        0.3065,
+        0.2835,
+        0.2610,
+        0.2480,
+        0.2327,
     )
     N2_B = (
-        0.5050, 0.6514, 0.7222, 0.7825, 0.8126, 0.8434, 0.8693, 0.8910,
-        0.9092, 0.9222, 0.9319, 0.9403, 0.9477, 0.9544, 0.9602, 0.9653,
+        0.5050,
+        0.6514,
+        0.7222,
+        0.7825,
+        0.8126,
+        0.8434,
+        0.8693,
+        0.8910,
+        0.9092,
+        0.9222,
+        0.9319,
+        0.9403,
+        0.9477,
+        0.9544,
+        0.9602,
+        0.9653,
     )
     HE_A = (
-        1.7424, 1.3830, 1.1919, 1.0458, 0.9220, 0.8205, 0.7305, 0.6502,
-        0.5950, 0.5545, 0.5333, 0.5189, 0.5181, 0.5176, 0.5172, 0.5119,
+        1.7424,
+        1.3830,
+        1.1919,
+        1.0458,
+        0.9220,
+        0.8205,
+        0.7305,
+        0.6502,
+        0.5950,
+        0.5545,
+        0.5333,
+        0.5189,
+        0.5181,
+        0.5176,
+        0.5172,
+        0.5119,
     )
     HE_B = (
-        0.4245, 0.5747, 0.6527, 0.7223, 0.7582, 0.7957, 0.8279, 0.8553,
-        0.8757, 0.8903, 0.8997, 0.9073, 0.9122, 0.9171, 0.9217, 0.9267,
+        0.4245,
+        0.5747,
+        0.6527,
+        0.7223,
+        0.7582,
+        0.7957,
+        0.8279,
+        0.8553,
+        0.8757,
+        0.8903,
+        0.8997,
+        0.9073,
+        0.9122,
+        0.9171,
+        0.9217,
+        0.9267,
     )
     N2_HALF_LIFE = (
-        4.0, 8.0, 12.5, 18.5, 27.0, 38.3, 54.3, 77.0, 109.0,
-        146.0, 187.0, 239.0, 305.0, 390.0, 498.0, 635.0,
+        4.0,
+        8.0,
+        12.5,
+        18.5,
+        27.0,
+        38.3,
+        54.3,
+        77.0,
+        109.0,
+        146.0,
+        187.0,
+        239.0,
+        305.0,
+        390.0,
+        498.0,
+        635.0,
     )
     HE_HALF_LIFE = (
-        1.51, 3.02, 4.72, 6.99, 10.21, 14.48, 20.53, 29.11, 41.20,
-        55.19, 70.69, 90.34, 115.29, 147.42, 188.24, 240.03,
+        1.51,
+        3.02,
+        4.72,
+        6.99,
+        10.21,
+        14.48,
+        20.53,
+        29.11,
+        41.20,
+        55.19,
+        70.69,
+        90.34,
+        115.29,
+        147.42,
+        188.24,
+        240.03,
     )
 
 
-
-class DecoModelValidator(object):
+class DecoModelValidator:
     """
     Dive step tissue pressure validator (coroutine class).
 
@@ -683,6 +839,7 @@ class DecoModelValidator(object):
 
     :var engine: DecoTengu decompression engine.
     """
+
     def __init__(self, engine):
         """
         Create coroutine object.
@@ -692,20 +849,18 @@ class DecoModelValidator(object):
         self.engine = engine
         self._first_stop_checked = False
 
-
     @coroutine
     def __call__(self):
         """
         Start the coroutine.
         """
-        logger.info('started deco model validator')
+        logger.info("started deco model validator")
         prev = None
         while True:
             step = yield
             self._ceiling_limit(step)
             self._first_stop_at_ceiling(prev, step)
             prev = step
-
 
     def _ceiling_limit(self, step):
         """
@@ -714,12 +869,8 @@ class DecoModelValidator(object):
         :param step: Dive step to verify.
         """
         limit = self.engine.model.ceiling_limit(step.data, step.data.gf)
-        if step.abs_p < limit: # ok when step.abs_p >= limit
-            raise EngineError(
-                'Pressure ceiling validation error at {} (limit={})'
-                .format(step, limit)
-            )
-
+        if step.abs_p < limit:  # ok when step.abs_p >= limit
+            raise EngineError(f"Pressure ceiling validation error at {step} (limit={limit})")
 
     def _first_stop_at_ceiling(self, prev, step):
         """
@@ -729,7 +880,7 @@ class DecoModelValidator(object):
         :param step: Dive step to verify.
         """
         # FIXME: Phase circular import, so using 'deco_stop' below
-        if not self._first_stop_checked and step.phase == 'deco_stop':
+        if not self._first_stop_checked and step.phase == "deco_stop":
             stop = prev
             limit = self.engine.model.ceiling_limit(stop.data)
             # if further ascent was possible, then first deco stop is at
@@ -737,12 +888,11 @@ class DecoModelValidator(object):
             # error
             if stop.abs_p - self.engine._p3m >= limit:
                 raise EngineError(
-                    'First decompression stop not at deco ceiling. Error for'
-                    ' {} (next step possible to {}, its limit is {})'
-                    .format(stop, stop.abs_p - self.engine._p3m, limit)
+                    "First decompression stop not at deco ceiling. Error for"
+                    f" {stop} (next step possible to {stop.abs_p - self.engine._p3m}, its limit is {limit})"
                 )
             self._first_stop_checked = True
-            logger.debug('first deco stop ok')
+            logger.debug("first deco stop ok")
 
 
 # vim: sw=4:et:ai

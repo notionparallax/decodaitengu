@@ -44,18 +44,19 @@ The complexity of the algorithm is :math:`O(n)`, where :math:`n` is length
 of decompression stop in minutes.
 """
 
-#- ascent jump - go to next depth, then calculate tissue saturation for
+# - ascent jump - go to next depth, then calculate tissue saturation for
 #  time, which would take to get from previous to next depth (can be used
 #  when trying to avoid Schreiner equation)
 
 import logging
 
-from ..engine import Phase, Step, ConfigError
 from .. import const
+from ..engine import ConfigError, Phase, Step
 
 logger = logging.getLogger(__name__)
 
-class AscentJumper(object):
+
+class AscentJumper:
     """
     Ascent by jumping (teleporting).
 
@@ -69,6 +70,7 @@ class AscentJumper(object):
 
     :var engine: DecoTengu decompression engine.
     """
+
     def __init__(self, engine):
         """
         Create ascent jumper object.
@@ -77,7 +79,6 @@ class AscentJumper(object):
         """
         self.engine = engine
 
-
     def __call__(self, start, abs_p, gas):
         """
         Ascent from start dive step to destination depth (its absolute
@@ -85,34 +86,30 @@ class AscentJumper(object):
 
         .. seealso:: `decotengu.Engine._free_ascent`
         """
-        logger.debug('executing ascent jumper')
+        logger.debug("executing ascent jumper")
         engine = self.engine
         ascent_rate = engine.ascent_rate
         model = engine.model
         if ascent_rate > 10:
-            raise ConfigError(
-                'Ascent jumper requires ascent rate lower than 10m/min'
-            )
+            raise ConfigError("Ascent jumper requires ascent rate lower than 10m/min")
 
         t = engine._pressure_to_time(start.abs_p - abs_p, ascent_rate)
         end_time = int(start.time + t)
         logger.debug(
-            'ascent from {0.abs_p}bar ({0.time}min) to {1}bar ({2}min))'
-            .format(start, abs_p, end_time)
+            f"ascent from {start.abs_p}bar ({start.time}min) to {abs_p}bar ({end_time}min))"
         )
 
         step = start
         minute = const.MINUTE
         dp = engine._time_to_pressure(minute, ascent_rate)
         for i in range(start.time, end_time, minute):
-            abs_p = step.abs_p - dp # jump
+            abs_p = step.abs_p - dp  # jump
             data = model.load(abs_p, minute, gas, 0, step.data)
             step = Step(Phase.DECO_STOP, abs_p, step.time + minute, gas, data)
             yield step
 
 
-
-class DecoStopStepper(object):
+class DecoStopStepper:
     """
     Execute decompression stop using 1min intervals.
 
@@ -124,6 +121,7 @@ class DecoStopStepper(object):
 
     .. seealso:: :py:meth:`decotengu.Engine._deco_stop`
     """
+
     def __init__(self, engine):
         """
         Create deco stop stepper object.
@@ -131,7 +129,6 @@ class DecoStopStepper(object):
         :param engine: DecoTengu decompression engine.
         """
         self.engine = engine
-
 
     def __call__(self, start, time, gas, gf):
         """
@@ -145,7 +142,7 @@ class DecoStopStepper(object):
         if __debug__:
             depth = engine._to_depth(abs_p)
             assert depth % 3 == 0
-            logger.debug('deco stepper: deco stop at {}m'.format(depth))
+            logger.debug(f"deco stepper: deco stop at {depth}m")
 
         minute = const.MINUTE
         data = engine._tissue_pressure_const(abs_p, minute, gas, start.data)
@@ -154,13 +151,9 @@ class DecoStopStepper(object):
             data = engine._tissue_pressure_const(abs_p, minute, gas, data)
             deco_time += minute
             if __debug__:
-                logger.debug('deco stepper: time {}min'.format(deco_time))
+                logger.debug(f"deco stepper: time {deco_time}min")
 
-        step = start._replace(
-            phase=Phase.DECO_STOP,
-            time=start.time + deco_time,
-            data=data
-        )
+        step = start._replace(phase=Phase.DECO_STOP, time=start.time + deco_time, data=data)
         return step
 
 

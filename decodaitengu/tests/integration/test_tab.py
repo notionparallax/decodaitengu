@@ -21,12 +21,12 @@
 Tabular tissue calculator integration tests.
 """
 
+import unittest
 from pprint import pformat
 
 from decodaitengu import create
 from decodaitengu.alt.tab import tab_engine
 
-import unittest
 from . import test_engine as te
 
 
@@ -34,21 +34,21 @@ class EngineTest(unittest.TestCase):
     """
     Abstract class for all DecoTengu engine test cases.
     """
+
     def _engine(self, *args, **kw):
         engine = create(*args, **kw)
         tab_engine(engine)
         return engine
 
-
     def setUp(self):
         self.engine = self._engine()
-
 
 
 class EngineTestCase(EngineTest):
     """
     DecoTengu engine integration tests.
     """
+
     def test_various_gas_switches(self):
         """
         Test deco engine runs with various gas mix depth switches
@@ -70,10 +70,9 @@ class EngineTestCase(EngineTest):
             data = list(engine.calculate(40, 35))
 
             dt = engine.deco_table
-            msg = 'switch depth={}, \n{}'.format(depth, pformat(dt))
+            msg = f"switch depth={depth}, \n{pformat(dt)}"
             self.assertEqual(stops[depth], len(dt), msg)
             self.assertEqual(times[depth], dt.total, msg)
-
 
     def test_dive_with_travel_gas(self):
         """
@@ -91,7 +90,6 @@ class EngineTestCase(EngineTest):
 
         data = list(engine.calculate(90, 20))
         self.assertEqual(75, dt.total)
-
 
     def test_last_stop_6m_air(self):
         """
@@ -116,7 +114,6 @@ class EngineTestCase(EngineTest):
         t = dt[-1].time + dt[-2].time
         self.assertEqual(22, t)
 
-
     def test_last_stop_ean50(self):
         """
         Test dive with EAN50 deco gas and with last stop at 6m
@@ -133,29 +130,30 @@ class EngineTestCase(EngineTest):
 
         data = list(engine.calculate(45, 25))
         self.assertEqual(6, dt[-1].depth)
-        self.assertEqual(14, dt[-1].time) # or 15 for descent_rate=10
+        self.assertEqual(14, dt[-1].time)  # or 15 for descent_rate=10
 
         engine.last_stop_6m = False
         data = list(engine.calculate(45, 25))
         self.assertEqual(3, dt[-1].depth)
         t = dt[-1].time + dt[-2].time
-        self.assertEqual(13, t) # or 13 for descent_rate=10
-
+        self.assertEqual(13, t)  # or 13 for descent_rate=10
 
 
 # copy main test cases for DecoTengu engine
 class NDLTestCase(EngineTest, te.NDLTestCase):
     def setUp(self):
         super().setUp()
-        assert self.engine.model._exp.__class__.__name__ == 'TabExp', \
+        assert self.engine.model._exp.__class__.__name__ == "TabExp", (
             self.engine.model._exp.__class__
+        )
 
 
 class ProfileTestCase(EngineTest, te.ProfileTestCase):
     def setUp(self):
         super().setUp()
-        assert self.engine.model._exp.__class__.__name__ == 'TabExp', \
+        assert self.engine.model._exp.__class__.__name__ == "TabExp", (
             self.engine.model._exp.__class__
+        )
 
 
 # vim: sw=4:et:ai

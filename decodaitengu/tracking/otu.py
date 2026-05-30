@@ -26,8 +26,6 @@ for PO2 > 0.5 bar.
 """
 
 
-
-
 class OTUTracker:
     """Tracks OTU (UPTD) accumulation across a dive."""
 

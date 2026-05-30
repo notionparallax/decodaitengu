@@ -21,6 +21,7 @@
 DecoTengu exception classes.
 """
 
+
 class EngineError(Exception):
     pass
 

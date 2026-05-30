@@ -17,15 +17,16 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-from decodaitengu.ft import bisect_find, recurse_while
-
 import unittest
+
+from decodaitengu.ft import bisect_find, recurse_while
 
 
 class RecurseWhileTestCase(unittest.TestCase):
     """
     The `recurse_while` function tests.
     """
+
     def test_recurse(self):
         """
         Test recurse function
@@ -34,7 +35,6 @@ class RecurseWhileTestCase(unittest.TestCase):
         p = lambda a: a < 5
         v = recurse_while(p, f, 3)
         self.assertEqual(4, v)
-
 
     def test_recurse_start(self):
         """
@@ -46,60 +46,56 @@ class RecurseWhileTestCase(unittest.TestCase):
         self.assertEqual(5, v)
 
 
-
 class BisectFindTestCase(unittest.TestCase):
     """
     Bisection search algorithm tests.
     """
+
     def _f(self, k, at, bt):
         a = at[k - 1]
         b = bt[k - 1]
         return a >= b
 
-
     def test_find(self):
         """
         Test bisection algorithm search with solution in the middle
         """
-        at = [  1,   2,   3,   4, 5, 6, 7, 8, 9, 10]
+        at = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         bt = [0.1, 0.2, 2.9, 4.1, 6, 7, 8, 9, 10, 11]
         k = bisect_find(10, self._f, at, bt)
         self.assertEqual(3, k)
-
 
     def test_find_left(self):
         """
         Test bisection algorithm search with solution at the left
         """
-        at = [0.2, 0.1,   2,   4, 5, 6, 7, 8, 9, 10]
+        at = [0.2, 0.1, 2, 4, 5, 6, 7, 8, 9, 10]
         bt = [0.1, 0.2, 2.9, 4.1, 6, 7, 8, 9, 10, 11]
         k = bisect_find(10, self._f, at, bt)
         self.assertEqual(1, k)
-
 
     def test_find_last(self):
         """
         Test bisection algorithm search with solution at the right
         """
-        at = [ 0.1, 0.2, 2.9, 4.1, 6, 7, 8, 9, 10, 9]
-        bt = [0.05, 0.1,   2,   4, 5, 6, 7, 8, 9, 10]
+        at = [0.1, 0.2, 2.9, 4.1, 6, 7, 8, 9, 10, 9]
+        bt = [0.05, 0.1, 2, 4, 5, 6, 7, 8, 9, 10]
         k = bisect_find(10, self._f, at, bt)
         self.assertEqual(9, k)
-
 
     def test_no_solution(self):
         """
         Test bisection algorithm search without solution
         """
         # each at < bt
-        at = [0.05, 0.1,   2,   4, 5, 6, 7, 8, 9, 10]
-        bt = [ 0.1, 0.2, 2.9, 4.1, 6, 7, 8, 9, 10, 11]
+        at = [0.05, 0.1, 2, 4, 5, 6, 7, 8, 9, 10]
+        bt = [0.1, 0.2, 2.9, 4.1, 6, 7, 8, 9, 10, 11]
         k = bisect_find(10, self._f, at, bt)
         self.assertEqual(0, k)
 
         # each at >= bt
-        at = [ 0.1, 0.2, 2.9, 4.1, 6, 7, 8, 9, 10, 11]
-        bt = [0.05, 0.1,   2,   4, 5, 6, 7, 8, 9, 10]
+        at = [0.1, 0.2, 2.9, 4.1, 6, 7, 8, 9, 10, 11]
+        bt = [0.05, 0.1, 2, 4, 5, 6, 7, 8, 9, 10]
         k = bisect_find(10, self._f, at, bt)
         self.assertEqual(10, k)
 

@@ -22,31 +22,30 @@ DecoTengu engine integration tests.
 """
 
 import itertools
+import unittest
 from pprint import pformat
 
 from decodaitengu import create
-
-import unittest
 
 
 class EngineTest(unittest.TestCase):
     """
     Abstract class for all DecoTengu engine test cases.
     """
+
     def _engine(self, *args, **kw):
         engine = create(*args, **kw)
         return engine
 
-
     def setUp(self):
         self.engine = self._engine()
-
 
 
 class EngineTestCase(EngineTest):
     """
     DecoTengu engine integration tests.
     """
+
     def test_time_delta_stability(self):
         """
         Test deco engine time delta stability
@@ -63,9 +62,8 @@ class EngineTestCase(EngineTest):
             data = list(engine.calculate(40, 35))
 
             dt = engine.deco_table
-            self.assertEqual(7, len(dt), 'time delta={}'.format(t))
-            self.assertEqual(15, dt.total, 'time delta={}'.format(t))
-
+            self.assertEqual(7, len(dt), f"time delta={t}")
+            self.assertEqual(15, dt.total, f"time delta={t}")
 
     def test_various_time_delta_gas_switch(self):
         """
@@ -89,12 +87,9 @@ class EngineTestCase(EngineTest):
             data = list(engine.calculate(40, 35))
 
             dt = engine.deco_table
-            msg = 'switch depth={}, delta={},\n{}'.format(
-                depth, delta, pformat(dt)
-            )
+            msg = f"switch depth={depth}, delta={delta},\n{pformat(dt)}"
             self.assertEqual(stops[depth], len(dt), msg)
             self.assertEqual(times[depth], dt.total, msg)
-
 
     def test_dive_with_travel_gas(self):
         """
@@ -111,7 +106,6 @@ class EngineTestCase(EngineTest):
 
         data = list(engine.calculate(90, 20))
         self.assertEqual(90, engine.deco_table.total)
-
 
     def test_last_stop_6m_air(self):
         """
@@ -134,7 +128,6 @@ class EngineTestCase(EngineTest):
         self.assertEqual(3, engine.deco_table[-1].depth)
         t = engine.deco_table[-1].time + engine.deco_table[-2].time
         self.assertEqual(25, t)
-
 
     def test_last_stop_ean50(self):
         """
@@ -160,15 +153,14 @@ class EngineTestCase(EngineTest):
         self.assertEqual(14, t)
 
 
-
 class NDLTestCase(EngineTest):
     """
     NDL dive tests
     """
+
     def setUp(self):
         super().setUp()
         self.engine.descent_rate = 10
-
 
     def test_ndl_dive_30m_100(self):
         """
@@ -181,7 +173,6 @@ class NDLTestCase(EngineTest):
         list(engine.calculate(30, 19))
         self.assertEqual(0, engine.deco_table.total)
 
-
     def test_ndl_dive_30m_90(self):
         """
         Test NDL dive to 30m (gf high 90)
@@ -192,7 +183,6 @@ class NDLTestCase(EngineTest):
 
         list(engine.calculate(30, 18))
         self.assertEqual(0, engine.deco_table.total)
-
 
     def test_non_ndl_dive_30m_90(self):
         """
@@ -206,11 +196,11 @@ class NDLTestCase(EngineTest):
         self.assertTrue(engine.deco_table.total > 0)
 
 
-
 class ProfileTestCase(EngineTest):
     """
     Integration tests for various dive profiles
     """
+
     def test_deepstop(self):
         """
         Test for dive profile presented in Baker "Deep Stops" paper
@@ -230,25 +220,25 @@ class ProfileTestCase(EngineTest):
         # it seems the dive profile in Baker paper does not take into
         # account descent
         data = list(engine.calculate(90, 20, descent=False))
-        self.assertEqual((57, 1), dt[0]) # first stop deeper
+        self.assertEqual((57, 1), dt[0])  # first stop deeper
         self.assertEqual((54, 1), dt[1])
         self.assertEqual((51, 1), dt[2])
         self.assertEqual((48, 1), dt[3])
         self.assertEqual((45, 1), dt[4])
         self.assertEqual((42, 1), dt[5])
         self.assertEqual((39, 2), dt[6])
-        self.assertEqual((36, 2), dt[7]) # 1 minute less
-        self.assertEqual((33, 2), dt[8]) # 1 minute more
-        self.assertEqual((30, 1), dt[9]) # 1 minute less
+        self.assertEqual((36, 2), dt[7])  # 1 minute less
+        self.assertEqual((33, 2), dt[8])  # 1 minute more
+        self.assertEqual((30, 1), dt[9])  # 1 minute less
         self.assertEqual((27, 2), dt[10])
-        self.assertEqual((24, 3), dt[11]) # 1 minute more
-        self.assertEqual((21, 3), dt[12]) # 1 minute less
-        self.assertEqual((18, 4), dt[13]) # 1 minutes more
+        self.assertEqual((24, 3), dt[11])  # 1 minute more
+        self.assertEqual((21, 3), dt[12])  # 1 minute less
+        self.assertEqual((18, 4), dt[13])  # 1 minutes more
         self.assertEqual((15, 6), dt[14])
-        self.assertEqual((12, 9), dt[15]) # 1 minute more
+        self.assertEqual((12, 9), dt[15])  # 1 minute more
         self.assertEqual((9, 10), dt[16])
-        self.assertEqual((6, 19), dt[17]) # 3 minutes more
-        self.assertEqual((3, 34), dt[18]) # 2 minutes more
+        self.assertEqual((6, 19), dt[17])  # 3 minutes more
+        self.assertEqual((3, 34), dt[18])  # 2 minutes more
 
 
 # vim: sw=4:et:ai

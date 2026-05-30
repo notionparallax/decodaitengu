@@ -37,14 +37,12 @@ For trimix (combined N2 + He):
     P_ceiling = (P_n2 + P_he - A * gf) / (gf / B + 1 - gf)
 """
 
-
-
 import math
 from dataclasses import dataclass
 from typing import Protocol
 
-from ..types import Gas, TissueState
 from .. import const
+from ..types import Gas, TissueState
 
 
 @dataclass(frozen=True, slots=True)

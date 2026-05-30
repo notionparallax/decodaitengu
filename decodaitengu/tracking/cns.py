@@ -28,8 +28,6 @@ Reference:
     https://scubaboard.com/community/threads/need-an-excel-formula-that-will-calculate-cns.237903/post-10750263
 """
 
-
-
 from enum import Enum
 
 

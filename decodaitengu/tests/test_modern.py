@@ -8,13 +8,13 @@ import math
 
 import pytest
 
+from decodaitengu.const import WATER_VAPOUR_PRESSURE_DEFAULT as WATER_VAPOUR_PRESSURE
 from decodaitengu.models import ZHL16B, ZHL16C
 from decodaitengu.models.base import eq_gf_limit, eq_schreiner
-from decodaitengu.const import WATER_VAPOUR_PRESSURE_DEFAULT as WATER_VAPOUR_PRESSURE
 from decodaitengu.planning import plan_dive
-from decodaitengu.tracking.cns import CNSTracker, CNSMethod
+from decodaitengu.tracking.cns import CNSMethod, CNSTracker
 from decodaitengu.tracking.otu import OTUTracker
-from decodaitengu.types import Cylinder, DecoStop, DiveSummary, Gas, GasUsage, TissueState
+from decodaitengu.types import Cylinder, Gas, TissueState
 
 
 class TestGas:

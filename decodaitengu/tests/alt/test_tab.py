@@ -21,23 +21,23 @@
 Tabular calculator tests.
 """
 
+import unittest
+
 from decodaitengu.alt.tab import TabExp, tab_engine
 
 from ..tools import _engine
-
-import unittest
 
 
 class TabCalculatorTestCase(unittest.TestCase):
     """
     Tabular calculator tests.
     """
+
     def setUp(self):
         """
         Create tabular calculator.
         """
         self.tab_exp = TabExp([1, 2], [3, 4])
-
 
     def test_init(self):
         """
@@ -52,7 +52,6 @@ class TabCalculatorTestCase(unittest.TestCase):
         self.assertTrue(all(60 in v for v in kt_exp.values()))
         self.assertTrue(all(6 in v for v in kt_exp.values()))
 
-
     def test_1min(self):
         """
         Test tabular calculation for 1min
@@ -60,14 +59,12 @@ class TabCalculatorTestCase(unittest.TestCase):
         v = self.tab_exp(1, 1)
         self.assertAlmostEqual(0.36787, v, 4)
 
-
     def test_2min(self):
         """
         Test tabular calculation for 2min
         """
         v = self.tab_exp(2, 1)
         self.assertAlmostEqual(0.13533, v, 4)
-
 
     def test_1min12s(self):
         """
@@ -77,11 +74,11 @@ class TabCalculatorTestCase(unittest.TestCase):
         self.assertAlmostEqual(0.30119, v, 4)
 
 
-
 class TabOverrideTestCase(unittest.TestCase):
     """
     Tabular calculator override tests.
     """
+
     def test_tab_oveerride(self):
         """
         Test tabular calculator override

@@ -36,11 +36,11 @@ logger = logging.getLogger(__name__)
 
 
 # InfoSample [1] --> [16] tissues: InfoTissue
-InfoSample = namedtuple('InfoSample', 'depth time pressure gas tissues phase')
-InfoTissue = namedtuple('InfoTissue', 'no pressure limit gf gf_limit')
+InfoSample = namedtuple("InfoSample", "depth time pressure gas tissues phase")
+InfoTissue = namedtuple("InfoTissue", "no pressure limit gf gf_limit")
 
 
-class DiveStepInfoGenerator(object):
+class DiveStepInfoGenerator:
     """
     Coroutine class to convert dive step into rich dive information
     records.
@@ -50,6 +50,7 @@ class DiveStepInfoGenerator(object):
     :var engine: DecoTengu decompression engine.
     :var target: Coroutine to send dive information records to.
     """
+
     def __init__(self, engine, target):
         """
         Create the coroutine object.
@@ -59,7 +60,6 @@ class DiveStepInfoGenerator(object):
         """
         self.engine = engine
         self.target = target
-
 
     @coroutine
     def __call__(self):
@@ -83,8 +83,7 @@ class DiveStepInfoGenerator(object):
                 for k, ((p_n2, p_he), l, gf) in enumerate(zip(data.tissues, tm, tl), 1)
             )
             sample = InfoSample(
-                to_depth(step.abs_p), step.time, step.abs_p,
-                step.gas, tissues, phase
+                to_depth(step.abs_p), step.time, step.abs_p, step.gas, tissues, phase
             )
 
             target.send(sample)
@@ -99,8 +98,18 @@ def csv_writer(f, target=None):
     :param target: Optional coroutine to forward dive information records to.
     """
     header = [
-        'depth', 'time', 'pressure', 'gas_o2', 'gas_n2', 'gas_he', 'tissue_no',
-        'tissue_pressure', 'tissue_limit', 'gf', 'tissue_gf_limit', 'phase'
+        "depth",
+        "time",
+        "pressure",
+        "gas_o2",
+        "gas_n2",
+        "gas_he",
+        "tissue_no",
+        "tissue_pressure",
+        "tissue_limit",
+        "gf",
+        "tissue_gf_limit",
+        "phase",
     ]
 
     fcsv = csv.writer(f)
@@ -110,13 +119,21 @@ def csv_writer(f, target=None):
         sample = yield
 
         r1 = [
-            sample.depth, sample.time, sample.pressure,
-            sample.gas.o2, sample.gas.n2, sample.gas.he
+            sample.depth,
+            sample.time,
+            sample.pressure,
+            sample.gas.o2,
+            sample.gas.n2,
+            sample.gas.he,
         ]
         for tissue in sample.tissues:
             r2 = [
-                tissue.no, tissue.pressure, tissue.limit, tissue.gf,
-                tissue.gf_limit, sample.phase
+                tissue.no,
+                tissue.pressure,
+                tissue.limit,
+                tissue.gf,
+                tissue.gf_limit,
+                sample.phase,
             ]
             fcsv.writerow(r1 + r2)
 

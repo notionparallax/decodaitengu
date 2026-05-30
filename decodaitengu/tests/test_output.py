@@ -22,22 +22,21 @@ Tests for DecoTengu output classes, functions and coroutines.
 """
 
 import io
+import unittest
 
 from decodaitengu.engine import Phase, Step
-from decodaitengu.output import DiveStepInfoGenerator, csv_writer, \
-        InfoSample, InfoTissue
-from decodaitengu.model import ZH_L16B_GF
 from decodaitengu.flow import coroutine
+from decodaitengu.model import ZH_L16B_GF
+from decodaitengu.output import DiveStepInfoGenerator, InfoSample, InfoTissue, csv_writer
 
-from .tools import _engine, _data, AIR
-
-import unittest
+from .tools import AIR, _data, _engine
 
 
 class DiveStepInfoTestCase(unittest.TestCase):
     """
     Dive step info tests.
     """
+
     def test_dive_step_info(self):
         """
         Test dive step info mod
@@ -52,10 +51,11 @@ class DiveStepInfoTestCase(unittest.TestCase):
         s2 = Step(Phase.DECO_STOP, 2.5, 145, AIR, d)
 
         data = []
+
         @coroutine
         def sink():
             while True:
-                v = (yield)
+                v = yield
                 data.append(v)
 
         info = DiveStepInfoGenerator(engine, sink())()
@@ -69,14 +69,14 @@ class DiveStepInfoTestCase(unittest.TestCase):
         self.assertEqual(100, i1.time)
         self.assertEqual(3.0, i1.pressure)
         self.assertEqual(AIR, i1.gas)
-        self.assertEqual('const', i1.phase)
+        self.assertEqual("const", i1.phase)
         self.assertEqual(2, len(i1.tissues))
 
         self.assertEqual(15, i2.depth)
         self.assertEqual(145, i2.time)
         self.assertEqual(2.5, i2.pressure)
         self.assertEqual(AIR, i2.gas)
-        self.assertEqual('deco_stop', i2.phase)
+        self.assertEqual("deco_stop", i2.phase)
         self.assertEqual(2, len(i2.tissues))
 
         t1, t2 = i1.tissues
@@ -92,11 +92,11 @@ class DiveStepInfoTestCase(unittest.TestCase):
         self.assertAlmostEqual(1.72332601, t2.gf_limit)
 
 
-
 class CSVWriterTestCase(unittest.TestCase):
     """
     Tests for saving tissue saturation data in a CSV file.
     """
+
     def test_write_csv(self):
         """
         Test saving tissue saturation data in CSV file
@@ -104,29 +104,43 @@ class CSVWriterTestCase(unittest.TestCase):
         f = io.StringIO()
 
         data = [
-            InfoSample(0, 0, 2.1, AIR, [
-                InfoTissue(0, 1.2, 0.9, 0.3, 0.95),
-                InfoTissue(1, 1.3, 0.91, 0.3, 0.96),
-            ], 'descent'),
-            InfoSample(2, 5, 3.1, AIR, [
-                InfoTissue(0, 1.4, 0.95, 0.3, 0.98),
-                InfoTissue(1, 1.5, 0.96, 0.3, 0.99),
-            ], 'const'),
+            InfoSample(
+                0,
+                0,
+                2.1,
+                AIR,
+                [
+                    InfoTissue(0, 1.2, 0.9, 0.3, 0.95),
+                    InfoTissue(1, 1.3, 0.91, 0.3, 0.96),
+                ],
+                "descent",
+            ),
+            InfoSample(
+                2,
+                5,
+                3.1,
+                AIR,
+                [
+                    InfoTissue(0, 1.4, 0.95, 0.3, 0.98),
+                    InfoTissue(1, 1.5, 0.96, 0.3, 0.99),
+                ],
+                "const",
+            ),
         ]
 
         writer = csv_writer(f)
         for i in data:
             writer.send(i)
 
-        st = f.getvalue().split('\n')
+        st = f.getvalue().split("\n")
 
         self.assertEqual(6, len(st))
-        self.assertEqual(12, len(st[0].split(',')))
-        self.assertEqual(12, len(st[1].split(',')))
-        self.assertEqual('', st[-1])
-        self.assertTrue(st[0].startswith('depth,time,pressure,'))
-        self.assertTrue(st[1].endswith('descent\r'), st[1])
-        self.assertTrue(st[4].endswith('const\r'), st[4])
+        self.assertEqual(12, len(st[0].split(",")))
+        self.assertEqual(12, len(st[1].split(",")))
+        self.assertEqual("", st[-1])
+        self.assertTrue(st[0].startswith("depth,time,pressure,"))
+        self.assertTrue(st[1].endswith("descent\r"), st[1])
+        self.assertTrue(st[4].endswith("const\r"), st[4])
 
 
 # vim: sw=4:et:ai

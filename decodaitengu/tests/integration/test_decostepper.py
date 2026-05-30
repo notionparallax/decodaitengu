@@ -21,22 +21,26 @@
 Deco stop stepper integration tests.
 """
 
+import unittest
+
 from decodaitengu import create
 from decodaitengu.alt.naive import DecoStopStepper
 
-import unittest
 
 class DecoStepperTestCase(unittest.TestCase):
     """
     Deco stop stepper integration tests.
     """
+
     def test_deco_stepper(self):
         """
         Test deco stop stepper with DecoTengu deco engine
         """
+
         # override class to record if the stepper is called at all
         class Stepper(DecoStopStepper):
             called = False
+
             def __call__(self, step, time, gas, gf):
                 self.called = True
                 return super().__call__(step, time, gas, gf)

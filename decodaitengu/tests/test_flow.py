@@ -21,22 +21,26 @@
 Test for DecoTengu data flow processing functions and coroutines.
 """
 
-from decodaitengu.flow import sender, coroutine
-
 import unittest
+
+from decodaitengu.flow import coroutine, sender
+
 
 class SenderTestCase(unittest.TestCase):
     """
     Sender decorator tests.
     """
+
     def test_sender(self):
         """
         Test sender decorator
         """
+
         def f(n):
             return range(n)
 
         data = []
+
         @coroutine
         def printer():
             while True:

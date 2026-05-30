@@ -21,19 +21,20 @@
 Conveyor tests.
 """
 
-from decodaitengu.engine import Phase
-from decodaitengu.conveyor import Conveyor
-
-from .tools import _step, AIR, EAN50
-
 import unittest
 from unittest import mock
+
+from decodaitengu.conveyor import Conveyor
+from decodaitengu.engine import Phase
+
+from .tools import _step
 
 
 class ConveyorTestCase(unittest.TestCase):
     """
     Conveyor tests.
     """
+
     def test_trays_eq(self):
         """
         Test conveyor trays method, equal rest
@@ -42,7 +43,6 @@ class ConveyorTestCase(unittest.TestCase):
         k, r = t.trays(100 / 60, 160 / 60)
         self.assertEqual(0, k)
         self.assertAlmostEqual(1, r)
-
 
     def test_trays_neq(self):
         """
@@ -53,16 +53,14 @@ class ConveyorTestCase(unittest.TestCase):
         self.assertEqual(1, k)
         self.assertAlmostEqual(0.3, r)
 
-
     def test_tray_frac_eq(self):
         """
         Test conveyor with fractional time delta, equal rest
         """
-        t = Conveyor(mock.MagicMock(), 0.1 / 60) # 0.1s
+        t = Conveyor(mock.MagicMock(), 0.1 / 60)  # 0.1s
         k, r = t.trays(100 / 60, 160 / 60)
         self.assertEqual(599, k)
         self.assertAlmostEqual(0.1 / 60, r)
-
 
     def test_tray_frac_neq(self):
         """
@@ -72,7 +70,6 @@ class ConveyorTestCase(unittest.TestCase):
         k, r = t.trays(100 / 60, 160 / 60)
         self.assertEqual(499, k)
         self.assertAlmostEqual(0.12 / 60, r)
-
 
     def test_gas_switch(self):
         """
@@ -98,10 +95,10 @@ class ConveyorTestCase(unittest.TestCase):
 #        """
 #        self.engine.descent_rate = 10
 #        self.engine.conveyor.time_delta = 60
-# 
+#
 #        steps = list(self.engine._dive_descent(21, AIR))
 #        self.assertEqual(4, len(steps)) # should contain start of a dive
-# 
+#
 #        s1, s2, s3, s4 = steps
 #        self.assertEqual(0, s1.depth)
 #        self.assertEqual(0, s1.time)
@@ -120,10 +117,10 @@ class ConveyorTestCase(unittest.TestCase):
 #        """
 #        step = _step(Phase.ASCENT, 20, 120)
 #        self.engine.conveyor.time_delta = 60
-# 
+#
 #        steps = list(self.engine._dive_const(step, 180, AIR))
 #        self.assertEqual(3, len(steps))
-# 
+#
 #        s1, s2, s3 = steps
 #        self.assertEqual(20, s1.depth)
 #        self.assertEqual(180, s1.time)

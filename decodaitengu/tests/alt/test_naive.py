@@ -22,18 +22,19 @@ Tests for alternative implementations of various parts of DecoTengu's
 Engine class.
 """
 
-from decodaitengu.engine import Phase
-from decodaitengu.alt.naive import AscentJumper, DecoStopStepper
-
-from ..tools import _step, _engine, _data, AIR
-
 import unittest
+
+from decodaitengu.alt.naive import AscentJumper, DecoStopStepper
+from decodaitengu.engine import Phase
+
+from ..tools import AIR, _data, _engine, _step
 
 
 class AscentJumperTestCase(unittest.TestCase):
     """
     Ascent jumper tests.
     """
+
     def test_ascent_jumper(self):
         """
         Test ascent jumper between 30m and 5m
@@ -49,11 +50,11 @@ class AscentJumperTestCase(unittest.TestCase):
         self.assertEqual([21, 22], [s.time for s in steps])
 
 
-
 class DecoStopStepperTestCase(unittest.TestCase):
     """
     Decompression stepper tests.
     """
+
     def test_stepper(self):
         """
         Test decompression stepper

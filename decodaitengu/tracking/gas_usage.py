@@ -23,8 +23,6 @@ Calculates gas usage based on SAC rate, depth (ambient pressure), and time.
 Gas consumption at depth: litres = SAC * time * (abs_pressure / surface_pressure)
 """
 
-
-
 from ..types import Cylinder, Gas, GasUsage
 
 

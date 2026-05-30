@@ -91,7 +91,8 @@ the surface
 
 from decimal import Decimal, localcontext
 
-class DecimalContext(object):
+
+class DecimalContext:
     """
     Context manager for float type override with decimal type.
 
@@ -105,6 +106,7 @@ class DecimalContext(object):
     :var prec: Precision of decimal type.
     :var ctx: Decimal type context (from decimal module).
     """
+
     def __init__(self, type=Decimal, prec=9):
         """
         Create context manager.
@@ -112,9 +114,10 @@ class DecimalContext(object):
         :param type: Overriding decimal type.
         :param prec: Precision to use.
         """
+        import decodaitengu.alt.tab as tab
         import decodaitengu.const as const
         import decodaitengu.model as model
-        import decodaitengu.alt.tab as tab
+
         self.const = const
         self.model = model
         self.tab = tab
@@ -128,7 +131,6 @@ class DecimalContext(object):
         self.model_data = {}
         self.tab_data = {}
 
-
     def __enter__(self):
         """
         Override data type of constants of all known decompression models
@@ -138,26 +140,30 @@ class DecimalContext(object):
         ctx.prec = self.prec
 
         attrs = (
-            'WATER_VAPOUR_PRESSURE_DEFAULT', 'LOG_2', 'SURFACE_PRESSURE',
-            'METER_TO_BAR', 'ROUND_VALUE', 'MINUTE', 'DECO_STOP_SEARCH_TIME',
+            "WATER_VAPOUR_PRESSURE_DEFAULT",
+            "LOG_2",
+            "SURFACE_PRESSURE",
+            "METER_TO_BAR",
+            "ROUND_VALUE",
+            "MINUTE",
+            "DECO_STOP_SEARCH_TIME",
         )
         self._override(self.const, attrs, self.const_data)
-        self.const_data['SCALE'] = self.const.SCALE
+        self.const_data["SCALE"] = self.const.SCALE
         self.const.SCALE = self.prec - 4
-        self.const.EPSILON = 10 ** -self.const.SCALE
+        self.const.EPSILON = 10**-self.const.SCALE
 
-        attrs = 'TIME_6S',
+        attrs = ("TIME_6S",)
         self._override(self.tab, attrs, self.tab_data)
-        self.tab_data['EXP'] = self.tab.EXP
+        self.tab_data["EXP"] = self.tab.EXP
         self.tab.EXP = Decimal.exp
 
         for cls in (self.model.ZH_L16B_GF, self.model.ZH_L16C_GF):
             self.model_data[cls] = {}
-            attrs = ('N2_A', 'N2_B', 'HE_A', 'HE_B', 'N2_HALF_LIFE', 'HE_HALF_LIFE')
+            attrs = ("N2_A", "N2_B", "HE_A", "HE_B", "N2_HALF_LIFE", "HE_HALF_LIFE")
             self._override(cls, attrs, self.model_data[cls], scalar=False)
-            attrs = ('START_P_N2', 'START_P_HE')
+            attrs = ("START_P_N2", "START_P_HE")
             self._override(cls, attrs, self.model_data[cls])
-
 
     def __exit__(self, *args):
         """
@@ -165,13 +171,12 @@ class DecimalContext(object):
         """
         self._undo(self.const, self.const_data)
         self.const.SCALE = 10
-        self.const.EPSILON = 10 ** -self.const.SCALE
+        self.const.EPSILON = 10**-self.const.SCALE
         self._undo(self.tab, self.tab_data)
-        self.tab.EXP = self.tab_data['EXP']
+        self.tab.EXP = self.tab_data["EXP"]
         for cls in (self.model.ZH_L16B_GF, self.model.ZH_L16C_GF):
             self._undo(cls, self.model_data[cls])
         self.ctx.__exit__(*args)
-
 
     def _override(self, obj, attrs, data, scalar=True):
         """
@@ -195,7 +200,6 @@ class DecimalContext(object):
             else:
                 value = type(value)(self.type(v) for v in value)
             setattr(obj, attr, value)
-
 
     def _undo(self, obj, data):
         """

@@ -20,8 +20,6 @@
 
 """Shared type definitions for DecoTengu."""
 
-
-
 from dataclasses import dataclass, field
 from enum import Enum
 

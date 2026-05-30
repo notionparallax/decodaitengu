@@ -21,41 +21,43 @@
 Decimal override tests.
 """
 
+import unittest
 from decimal import Decimal, localcontext
 
 from decodaitengu.alt.decimal import DecimalContext
-
-import unittest
 
 
 class DecimalContextTestCase(unittest.TestCase):
     """
     Decimal override context manager tests.
     """
+
     def test_override_scalar(self):
         """
         Test decimal context manager overriding type
         """
-        class A(object):
+
+        class A:
             X = 1.01
             Y = 2.02
+
         ctx = DecimalContext()
 
         data = {}
-        ctx._override(A, ('X', 'Y'), data)
-        self.assertEqual(1.01, data['X'])
-        self.assertEqual(2.02, data['Y'])
-        self.assertEqual(float, type(data['X']))
-        self.assertEqual(float, type(data['Y']))
+        ctx._override(A, ("X", "Y"), data)
+        self.assertEqual(1.01, data["X"])
+        self.assertEqual(2.02, data["Y"])
+        self.assertEqual(float, type(data["X"]))
+        self.assertEqual(float, type(data["Y"]))
         self.assertEqual(Decimal, type(A.X))
         self.assertEqual(Decimal, type(A.Y))
-
 
     def test_override_tuple(self):
         """
         Test decimal context manager overriding type for tuples
         """
-        class A(object):
+
+        class A:
             X = (1.01, 1.03)
             Y = (2.02, 2.05)
 
@@ -65,9 +67,9 @@ class DecimalContextTestCase(unittest.TestCase):
             ctx = DecimalContext()
 
             data = {}
-            ctx._override(A, ('X', 'Y'), data, scalar=False)
-            self.assertEqual((1.01, 1.03), data['X'])
-            self.assertEqual((2.02, 2.05), data['Y'])
+            ctx._override(A, ("X", "Y"), data, scalar=False)
+            self.assertEqual((1.01, 1.03), data["X"])
+            self.assertEqual((2.02, 2.05), data["Y"])
 
             self.assertEqual((+Decimal(1.01), +Decimal(1.03)), A.X)
             self.assertEqual((+Decimal(2.02), +Decimal(2.05)), A.Y)
@@ -75,19 +77,19 @@ class DecimalContextTestCase(unittest.TestCase):
             self.assertEqual(expected, tuple(type(v) for v in A.X))
             self.assertEqual(expected, tuple(type(v) for v in A.Y))
 
-
     def test_undo(self):
         """
         Test decimal context manager undoing changes
         """
-        class A(object):
-            X = Decimal('1.01')
-            Y = Decimal('2.02')
+
+        class A:
+            X = Decimal("1.01")
+            Y = Decimal("2.02")
 
         ctx = DecimalContext()
-        ctx._undo(A, {'X': 'u1', 'Y': 'u2'})
-        self.assertEqual('u1', A.X)
-        self.assertEqual('u2', A.Y)
+        ctx._undo(A, {"X": "u1", "Y": "u2"})
+        self.assertEqual("u1", A.X)
+        self.assertEqual("u2", A.Y)
 
 
 # vim: sw=4:et:ai

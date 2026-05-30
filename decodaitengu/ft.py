@@ -36,14 +36,14 @@ def recurse_while(predicate, f, *args):
     :param *args: Starting arguments.
     """
     result = f(*args)
-    result = result if type(result) == tuple else (result, )
+    result = result if type(result) == tuple else (result,)
     while predicate(*result):
-        args = result # predicate(args) is always true
+        args = result  # predicate(args) is always true
         result = f(*args)
-        result = result if type(result) == tuple else (result, )
+        result = result if type(result) == tuple else (result,)
 
         if __debug__:
-            logger.debug('next result: {}'.format(result))
+            logger.debug(f"next result: {result}")
 
     return args if len(args) > 1 else args[0]
 
@@ -63,22 +63,21 @@ def bisect_find(n, f, *args, **kw):
     lo = 1
     hi = n + 1
     if __debug__:
-        logger.debug('bisect n: {}'.format(n))
+        logger.debug(f"bisect n: {n}")
 
     while lo < hi:
         k = (lo + hi) // 2
 
         if __debug__:
-            logger.debug('bisect range: {} <= {} <= {}'.format(lo, k, hi))
-            assert lo <= k <= hi, 'bisect range: {} <= {} <= {}'.format(lo, k, hi)
+            logger.debug(f"bisect range: {lo} <= {k} <= {hi}")
+            assert lo <= k <= hi, f"bisect range: {lo} <= {k} <= {hi}"
 
         if f(k, *args, **kw):
             lo = k + 1
         else:
             hi = k
 
-    return hi - 1 # hi is first k for which f(k) is not true, so f(hi - 1) is true
+    return hi - 1  # hi is first k for which f(k) is not true, so f(hi - 1) is true
 
 
 # vim: sw=4:et:ai
-

@@ -40,8 +40,6 @@ Example::
     print(result.cns_percent)
 """
 
-
-
 import math
 
 from . import const
@@ -127,7 +125,9 @@ def plan_dive(
     # -- DESCENT --
     descent_time = depth / descent_rate
     descent_rate_bar = descent_rate * const.METER_TO_BAR
-    tissues = deco_model.load(tissues, const.SURFACE_PRESSURE, descent_time, back_gas, descent_rate_bar)
+    tissues = deco_model.load(
+        tissues, const.SURFACE_PRESSURE, descent_time, back_gas, descent_rate_bar
+    )
 
     # Track O2 exposure during descent (use average depth)
     avg_descent_pressure = const.SURFACE_PRESSURE + (depth * const.METER_TO_BAR / 2.0)

@@ -30,10 +30,12 @@ def coroutine(func):
 
     Advances a coroutine to its first ``(yield)`` statement.
     """
+
     def start(*args, **kwargs):
         cr = func(*args, **kwargs)
         next(cr)
         return cr
+
     return start
 
 
@@ -62,6 +64,7 @@ def sender(gen, *tf):
     :param gen: Data generator.
     :param *tf: List of functions.
     """
+
     @wraps(gen)
     def _send(*a, **kw):
         t = split(*[c() for c in tf])
@@ -69,6 +72,7 @@ def sender(gen, *tf):
         for v in data:
             t.send(v)
             yield v
+
     return _send
 
 

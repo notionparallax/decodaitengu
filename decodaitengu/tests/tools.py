@@ -21,14 +21,15 @@
 DecoTengu unit tests tools.
 """
 
-from decodaitengu.engine import Engine, Step, GasMix
-from decodaitengu.model import Data
-
 from unittest import mock
+
+from decodaitengu.engine import Engine, GasMix, Step
+from decodaitengu.model import Data
 
 AIR = GasMix(depth=0, o2=21, n2=79, he=0)
 EAN50 = GasMix(depth=22, o2=50, n2=50, he=0)
 O2 = GasMix(depth=6, o2=100, n2=0, he=0)
+
 
 def _step(phase, abs_p, time, gas=AIR, data=None):
     if data is None:

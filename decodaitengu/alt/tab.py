@@ -17,7 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-"""
+r"""
 .. _tab-calc:
 
 Tabular Calculations
@@ -137,8 +137,8 @@ Perform calculations
     DecoStop(depth=3.0, time=22.0)
 """
 
-import math
 import logging
+import math
 
 from .. import const
 
@@ -147,7 +147,8 @@ logger = logging.getLogger(__name__)
 TIME_6S = 0.1
 EXP = math.exp
 
-class TabExp(object):
+
+class TabExp:
     """
     Tabular calculator.
 
@@ -157,6 +158,7 @@ class TabExp(object):
     :var _kt_exp: Collection of precomputed values of exp function for
         nitrogen and helium decay constants :math:`k`.
     """
+
     def __init__(self, n2_k_const, he_k_const):
         """
         Create instance of tabular calculator.
@@ -167,7 +169,6 @@ class TabExp(object):
 
         self._kt_exp = self._calc_exp(n2_k_const)
         self._kt_exp.update(self._calc_exp(he_k_const))
-
 
     def _calc_exp(self, k_const):
         """
@@ -181,11 +182,10 @@ class TabExp(object):
             exp = lambda t: EXP(-k * t)
             kt_exp[k] = {
                 6: exp(TIME_6S),  # 1m at 10m/min
-                60: exp(1),       # 10m at 10m/min
+                60: exp(1),  # 10m at 10m/min
             }
 
         return kt_exp
-
 
     def __call__(self, time, k):
         """
@@ -200,9 +200,7 @@ class TabExp(object):
         :param k: Gas decay constant :math:`k` for a tissue compartment.
         """
         if __debug__:
-            logger.debug(
-                'tab exp: time to split {}min ({}s)'.format(time, time * 60)
-            )
+            logger.debug(f"tab exp: time to split {time}min ({time * 60}s)")
 
         kt_exp = self._kt_exp[k]
         n1 = round(time // 1)
@@ -210,11 +208,10 @@ class TabExp(object):
         result = kt_exp[60] ** n1 * kt_exp[6] ** n2
 
         if __debug__:
-            logger.debug('tab exp: n1={}, n2={}'.format(n1, n2))
+            logger.debug(f"tab exp: n1={n1}, n2={n2}")
             assert abs(n1 * 60 + n2 * 6 - time * 60) < const.EPSILON
 
         return result
-
 
 
 def tab_engine(engine):
@@ -227,7 +224,7 @@ def tab_engine(engine):
     model = engine.model
     model._exp = TabExp(model.n2_k_const, model.he_k_const)
 
-    logger.warning('overriding descent rate and ascent rate to 10m/min')
+    logger.warning("overriding descent rate and ascent rate to 10m/min")
     engine.descent_rate = 10
     engine.ascent_rate = 10
 

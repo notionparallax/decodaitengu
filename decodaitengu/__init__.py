@@ -117,27 +117,33 @@ attributes::
 
 """
 
-from .engine import Engine, DecoTable
-from .model import ZH_L16B_GF, ZH_L16C_GF, DecoModelValidator
-from .flow import sender
 from .conveyor import Conveyor
+from .engine import DecoTable, Engine
+from .flow import sender
+from .model import ZH_L16B_GF, ZH_L16C_GF, DecoModelValidator
 
 # New modern API
 from .models import ZHL16B, ZHL16C, DecoModel
+from .planning import plan_dive
+from .tracking import CNSMethod, CNSTracker, OTUTracker
 from .types import (
     Cylinder,
-    DecoStop as DecoStopInfo,
     DiveSummary,
     Gas,
     GasUsage,
-    Phase as PhaseEnum,
-    Step as StepInfo,
     TissueState,
 )
-from .tracking import CNSTracker, CNSMethod, OTUTracker
-from .planning import plan_dive
+from .types import (
+    DecoStop as DecoStopInfo,
+)
+from .types import (
+    Phase as PhaseEnum,
+)
+from .types import (
+    Step as StepInfo,
+)
 
-__version__ = '1.0.0'
+__version__ = "1.0.0"
 
 
 def create(time_delta=None, validate=True):
@@ -174,24 +180,24 @@ def create(time_delta=None, validate=True):
 
 __all__ = [
     # Legacy API
-    'create',
-    'Engine',
-    'ZH_L16B_GF',
-    'ZH_L16C_GF',
+    "create",
+    "Engine",
+    "ZH_L16B_GF",
+    "ZH_L16C_GF",
     # Modern API
-    'plan_dive',
-    'ZHL16B',
-    'ZHL16C',
-    'DecoModel',
-    'Gas',
-    'Cylinder',
-    'TissueState',
-    'DiveSummary',
-    'DecoStopInfo',
-    'StepInfo',
-    'PhaseEnum',
-    'GasUsage',
-    'CNSTracker',
-    'CNSMethod',
-    'OTUTracker',
+    "plan_dive",
+    "ZHL16B",
+    "ZHL16C",
+    "DecoModel",
+    "Gas",
+    "Cylinder",
+    "TissueState",
+    "DiveSummary",
+    "DecoStopInfo",
+    "StepInfo",
+    "PhaseEnum",
+    "GasUsage",
+    "CNSTracker",
+    "CNSMethod",
+    "OTUTracker",
 ]
