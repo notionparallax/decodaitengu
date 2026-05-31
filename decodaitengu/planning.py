@@ -65,6 +65,33 @@ def _ceil_to_3m(depth: float) -> float:
     return math.ceil(depth / 3.0) * 3.0
 
 
+# Molecular weights [g/mol]
+_MW_O2 = 31.998
+_MW_N2 = 28.014
+_MW_HE = 4.003
+# Ideal gas constant [L·bar/(mol·K)]
+_R = 0.083145
+# Body temperature [K] (37 °C) — standard for dive gas density calculations
+_BODY_TEMP_K = 310.15
+
+
+def _gas_density(gas: Gas, abs_p: float) -> float:
+    """Calculate gas density at a given absolute pressure.
+
+    Uses the ideal gas law at body temperature (37 °C / 310.15 K), which is
+    the standard reference condition for dive gas density calculations.
+
+    :param gas: Gas mix.
+    :param abs_p: Absolute pressure [bar].
+    :returns: Gas density [g/L].
+    """
+    f_o2 = gas.o2 / 100.0
+    f_he = gas.he / 100.0
+    f_n2 = gas.n2 / 100.0
+    mw_mix = f_o2 * _MW_O2 + f_n2 * _MW_N2 + f_he * _MW_HE
+    return (mw_mix * abs_p) / (_R * _BODY_TEMP_K)
+
+
 def plan_dive(
     depth: float,
     bottom_time: float,
@@ -151,6 +178,9 @@ def plan_dive(
 
     runtime += bottom_duration
 
+    # Max gas density starts at max depth on back gas (the deepest exposure)
+    max_gas_density = _gas_density(back_gas, abs_p_bottom)
+
     # -- ASCENT with DECO --
     # Sort deco gases by switch depth (deepest first)
     all_gases = [back_gas] + sorted(deco_gases, key=lambda g: g.switch_depth, reverse=True)
@@ -193,6 +223,7 @@ def plan_dive(
             cns_percent=round(cns_tracker.cns_percent, 1),
             otu=round(otu_tracker.otu, 1),
             ndl=None,  # TODO: calculate actual NDL
+            max_gas_density=round(max_gas_density, 3),
         )
 
     # Deco dive - ascend to first stop
@@ -235,6 +266,9 @@ def plan_dive(
             if g.switch_depth >= stop_depth and g != current_gas:
                 current_gas = g
                 break
+
+        # Track density for the current gas at this stop depth
+        max_gas_density = max(max_gas_density, _gas_density(current_gas, abs_p_stop))
 
         # Wait at stop until we can ascend to next stop
         stop_time = 0.0
@@ -304,4 +338,5 @@ def plan_dive(
         cns_percent=round(cns_tracker.cns_percent, 1),
         otu=round(otu_tracker.otu, 1),
         ndl=None,
+        max_gas_density=round(max_gas_density, 3),
     )

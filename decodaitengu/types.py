@@ -187,6 +187,7 @@ class DiveSummary:
     :param otu: Oxygen toxicity units (UPTD).
     :param ndl: No-decompression limit if no deco required [min], else None.
     :param gas_usage: Gas consumption by label.
+    :param max_gas_density: Maximum gas density encountered during the dive [g/L].
     """
 
     runtime: float
@@ -198,3 +199,4 @@ class DiveSummary:
     otu: float = 0.0
     ndl: float | None = None
     gas_usage: dict[str, GasUsage] = field(default_factory=dict)
+    max_gas_density: float = 0.0

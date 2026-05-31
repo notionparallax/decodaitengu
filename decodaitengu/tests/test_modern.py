@@ -11,7 +11,7 @@ import pytest
 from decodaitengu.const import WATER_VAPOUR_PRESSURE_DEFAULT as WATER_VAPOUR_PRESSURE
 from decodaitengu.models import ZHL16B, ZHL16C
 from decodaitengu.models.base import eq_gf_limit, eq_schreiner
-from decodaitengu.planning import plan_dive
+from decodaitengu.planning import _gas_density, plan_dive
 from decodaitengu.tracking.cns import CNSMethod, CNSTracker
 from decodaitengu.tracking.otu import OTUTracker
 from decodaitengu.types import Cylinder, Gas, TissueState
@@ -301,3 +301,42 @@ class TestPlanDive:
         # 3m last stop allows shallower stops
         if result_3m.stops:
             assert result_3m.stops[-1].depth >= 3.0
+
+
+class TestGasDensity:
+    def test_air_at_surface(self):
+        """Air at surface (~1.01325 bar) should be about 1.2 g/L."""
+        gas = Gas(o2=21)
+        density = _gas_density(gas, 1.01325)
+        assert 1.1 < density < 1.3
+
+    def test_density_increases_with_depth(self):
+        """Density at 40m should be higher than at surface."""
+        gas = Gas(o2=21)
+        d_surface = _gas_density(gas, 1.01325)
+        d_40m = _gas_density(gas, 1.01325 + 40 * 0.09985)
+        assert d_40m > d_surface
+
+    def test_helium_reduces_density(self):
+        """Trimix with helium should be less dense than air at same pressure."""
+        air = Gas(o2=21)
+        trimix = Gas(o2=21, he=35)
+        p = 5.0
+        assert _gas_density(trimix, p) < _gas_density(air, p)
+
+    def test_plan_dive_max_density_nonzero(self):
+        """max_gas_density should be non-zero after any dive."""
+        result = plan_dive(depth=30, bottom_time=30, gf=(30, 85))
+        assert result.max_gas_density > 0.0
+
+    def test_deeper_dive_higher_density(self):
+        """Deeper dive should yield higher max gas density."""
+        shallow = plan_dive(depth=20, bottom_time=20, gf=(100, 100))
+        deep = plan_dive(depth=40, bottom_time=20, gf=(100, 100))
+        assert deep.max_gas_density > shallow.max_gas_density
+
+    def test_trimix_lower_density_than_air(self):
+        """Trimix back gas should produce lower max density than air at same depth."""
+        air_dive = plan_dive(depth=60, bottom_time=20, gf=(30, 85))
+        trimix_dive = plan_dive(depth=60, bottom_time=20, back_gas=Gas(21, 35), gf=(30, 85))
+        assert trimix_dive.max_gas_density < air_dive.max_gas_density
