@@ -188,6 +188,12 @@ class DiveSummary:
     :param ndl: No-decompression limit if no deco required [min], else None.
     :param gas_usage: Gas consumption by label.
     :param max_gas_density: Maximum gas density encountered during the dive [g/L].
+    :param stop_runtimes: Maps stop depth -> cumulative runtime (minutes) at END of that stop.
+        e.g. {6.0: 52.0, 3.0: 62.0} means 6m stop ended at T=52min, 3m at T=62min.
+    :param profile: (time, depth) waypoints for the full dive: surface start, bottom,
+        each stop, surface arrival.
+    :param back_gas_ascent_litres: Litres of back gas consumed during ascent from leaving
+        bottom to first deco gas switch. Used to calculate min gas / turn pressure.
     """
 
     runtime: float
@@ -200,3 +206,6 @@ class DiveSummary:
     ndl: float | None = None
     gas_usage: dict[str, GasUsage] = field(default_factory=dict)
     max_gas_density: float = 0.0
+    stop_runtimes: dict[float, float] = field(default_factory=dict)
+    profile: list[tuple[float, float]] = field(default_factory=list)
+    back_gas_ascent_litres: float = 0.0

@@ -47,7 +47,7 @@ from .models import ZHL16C
 from .models.base import ZHL16GF
 from .tracking.cns import CNSMethod, CNSTracker
 from .tracking.otu import OTUTracker
-from .types import DecoStop, DiveSummary, Gas
+from .types import Cylinder, DecoStop, DiveSummary, Gas, GasUsage
 
 
 def _depth_to_pressure(depth: float) -> float:
@@ -69,16 +69,16 @@ def _ceil_to_3m(depth: float) -> float:
 _MW_O2 = 31.998
 _MW_N2 = 28.014
 _MW_HE = 4.003
-# Ideal gas constant [L·bar/(mol·K)]
+# Ideal gas constant [L*bar/(mol*K)]
 _R = 0.083145
-# Body temperature [K] (37 °C) — standard for dive gas density calculations
+# Body temperature [K] (37 degC) -- standard for dive gas density calculations
 _BODY_TEMP_K = 310.15
 
 
 def _gas_density(gas: Gas, abs_p: float) -> float:
     """Calculate gas density at a given absolute pressure.
 
-    Uses the ideal gas law at body temperature (37 °C / 310.15 K), which is
+    Uses the ideal gas law at body temperature (37 degC / 310.15 K), which is
     the standard reference condition for dive gas density calculations.
 
     :param gas: Gas mix.
@@ -104,6 +104,10 @@ def plan_dive(
     model: type[ZHL16GF] | ZHL16GF | None = None,
     surface_pressure: float = const.SURFACE_PRESSURE,
     cns_method: CNSMethod = CNSMethod.EXPONENTIAL,
+    sac_bottom: float = 20.0,
+    sac_deco: float = 17.0,
+    back_cylinder: Cylinder | None = None,
+    deco_cylinders: list[Cylinder] | None = None,
 ) -> DiveSummary:
     """Plan a dive and return a complete summary.
 
@@ -120,8 +124,12 @@ def plan_dive(
     :param ascent_rate: Ascent rate [m/min]. Default 10.
     :param last_stop_depth: Depth of last deco stop [m]. Default 3.
     :param model: Decompression model class or instance. Default ZHL16C.
-    :param const.SURFACE_PRESSURE: Surface pressure [bar]. Default 1.01325.
+    :param surface_pressure: Surface pressure [bar]. Default 1.01325.
     :param cns_method: CNS calculation method. Default EXPONENTIAL.
+    :param sac_bottom: Surface-equivalent SAC [L/min] for descent and bottom. Default 20.
+    :param sac_deco: Surface-equivalent SAC [L/min] for deco stops and ascent. Default 17.
+    :param back_cylinder: Back gas cylinder. If provided, gas_usage is populated.
+    :param deco_cylinders: Deco gas cylinders, parallel to deco_gases list.
     :returns: DiveSummary with all dive information.
     """
     if back_gas is None:
@@ -149,6 +157,22 @@ def plan_dive(
     # Initialise tissues
     tissues = deco_model.init(const.SURFACE_PRESSURE)
 
+    # Gas consumption tracking (only if cylinders provided)
+    _gas_consumed: dict[str, float] = {}
+    _track_enabled = back_cylinder is not None or deco_cylinders is not None
+
+    def _gas_label(g: Gas) -> str:
+        return g.label if g.label else f"Tx{g.o2:.0f}/{g.he:.0f}"
+
+    def _track_gas(g: Gas, duration: float, avg_abs_p: float, sac: float) -> None:
+        litres = sac * duration * (avg_abs_p / surface_pressure)
+        lbl = _gas_label(g)
+        _gas_consumed[lbl] = _gas_consumed.get(lbl, 0.0) + litres
+
+    # Profile and stop runtime tracking
+    _profile: list[tuple[float, float]] = [(0.0, 0.0)]
+    _stop_runtimes: dict[float, float] = {}
+
     # -- DESCENT --
     descent_time = depth / descent_rate
     descent_rate_bar = descent_rate * const.METER_TO_BAR
@@ -156,13 +180,16 @@ def plan_dive(
         tissues, const.SURFACE_PRESSURE, descent_time, back_gas, descent_rate_bar
     )
 
-    # Track O2 exposure during descent (use average depth)
     avg_descent_pressure = const.SURFACE_PRESSURE + (depth * const.METER_TO_BAR / 2.0)
     po2_descent = (back_gas.o2 / 100.0) * avg_descent_pressure
     cns_tracker.update(po2_descent, descent_time)
     otu_tracker.update(po2_descent, descent_time)
 
     runtime = descent_time
+
+    if _track_enabled:
+        _track_gas(back_gas, descent_time, avg_descent_pressure, sac_bottom)
+    _profile.append((round(runtime, 2), depth))
 
     # -- BOTTOM --
     bottom_duration = bottom_time - descent_time
@@ -178,14 +205,15 @@ def plan_dive(
 
     runtime += bottom_duration
 
-    # Max gas density starts at max depth on back gas (the deepest exposure)
+    if _track_enabled:
+        _track_gas(back_gas, bottom_duration, abs_p_bottom, sac_bottom)
+    _profile.append((round(runtime, 2), depth))
+
+    # Max gas density starts at max depth on back gas
     max_gas_density = _gas_density(back_gas, abs_p_bottom)
 
     # -- ASCENT with DECO --
-    # Sort deco gases by switch depth (deepest first)
     all_gases = [back_gas] + sorted(deco_gases, key=lambda g: g.switch_depth, reverse=True)
-
-    # Find first deco stop
     ascent_rate_bar = ascent_rate * const.METER_TO_BAR
     stops: list[DecoStop] = []
     current_depth = depth
@@ -196,7 +224,6 @@ def plan_dive(
     first_stop_depth = max(last_stop_depth, _ceil_to_3m(ceiling_depth))
 
     # Check if NDL dive
-    # Simulate ascent to surface and check ceiling
     test_ascent_time = current_depth / ascent_rate
     test_tissues = deco_model.load(
         tissues, abs_p_bottom, test_ascent_time, current_gas, -ascent_rate_bar
@@ -211,8 +238,12 @@ def plan_dive(
         cns_tracker.update(po2_ascent, ascent_time)
         otu_tracker.update(po2_ascent, ascent_time)
 
+        if _track_enabled:
+            _track_gas(current_gas, ascent_time, avg_ascent_p, sac_deco)
+
         tissues = test_tissues
         runtime += ascent_time
+        _profile.append((round(runtime, 2), 0.0))
 
         return DiveSummary(
             runtime=round(runtime, 1),
@@ -222,17 +253,20 @@ def plan_dive(
             tissues_final=tissues,
             cns_percent=round(cns_tracker.cns_percent, 1),
             otu=round(otu_tracker.otu, 1),
-            ndl=None,  # TODO: calculate actual NDL
+            ndl=None,
             max_gas_density=round(max_gas_density, 3),
+            stop_runtimes={},
+            profile=_profile,
+            back_gas_ascent_litres=0.0,
         )
 
     # Deco dive - ascend to first stop
-    # Ascend to first deco stop (or gas switch, whichever is shallower from bottom)
-    # Process ascent in stages, handling gas switches
     total_deco_time = 0.0
 
     # Free ascent to first stop
     ascent_to_first = current_depth - first_stop_depth
+    _back_gas_ascent_litres = 0.0
+    _on_back_gas = True
     if ascent_to_first > 0:
         free_ascent_time = ascent_to_first / ascent_rate
         tissues = deco_model.load(
@@ -242,30 +276,42 @@ def plan_dive(
         po2 = (current_gas.o2 / 100.0) * avg_p
         cns_tracker.update(po2, free_ascent_time)
         otu_tracker.update(po2, free_ascent_time)
+        if _track_enabled:
+            _track_gas(current_gas, free_ascent_time, avg_p, sac_deco)
+        # Include free ascent in back_gas_ascent_litres (stressed rate)
+        _back_gas_ascent_litres += sac_bottom * free_ascent_time * (avg_p / surface_pressure)
         runtime += free_ascent_time
         current_depth = first_stop_depth
+    _profile.append((round(runtime, 2), first_stop_depth))
 
-    # Calculate number of stops from first stop to surface
-    n_stops = int(round((first_stop_depth - last_stop_depth) / 3.0)) + 1
-    if n_stops < 1:
-        n_stops = 1
-
-    gf_step = (gf_high - gf_low) / n_stops if n_stops > 0 else 0.0
-    current_gf = gf_low
-
-    # Process each 3m stop from first_stop_depth down to last_stop_depth
+    # Process each 3m stop from first_stop_depth down to last_stop_depth.
+    # GF is interpolated linearly with depth: gf_low at first_stop_depth,
+    # gf_high at the surface (depth=0). This is the standard Baker GF definition.
     stop_depth = first_stop_depth
     while stop_depth >= last_stop_depth:
         abs_p_stop = _depth_to_pressure(stop_depth)
-        current_gf += gf_step
+        if first_stop_depth > 0:
+            current_gf = gf_low + (gf_high - gf_low) * (first_stop_depth - stop_depth) / first_stop_depth
+        else:
+            current_gf = gf_high
         current_gf = min(current_gf, gf_high)
-        next_gf = current_gf
+        # GF for the NEXT stop (3m shallower) — used in the ascent check
+        next_stop_depth = stop_depth - 3.0
+        if first_stop_depth > 0 and next_stop_depth > 0:
+            next_gf = gf_low + (gf_high - gf_low) * (first_stop_depth - next_stop_depth) / first_stop_depth
+        else:
+            next_gf = gf_high
+        next_gf = min(next_gf, gf_high)
 
         # Check for gas switch at this depth
         for g in all_gases[1:]:  # skip back gas
             if g.switch_depth >= stop_depth and g != current_gas:
                 current_gas = g
                 break
+
+        # Detect back gas -> deco gas switch for ascent tracking
+        if current_gas != back_gas and _on_back_gas:
+            _on_back_gas = False
 
         # Track density for the current gas at this stop depth
         max_gas_density = max(max_gas_density, _gas_density(current_gas, abs_p_stop))
@@ -275,7 +321,6 @@ def plan_dive(
         while True:
             # Check if we can ascend 3m (or to surface for last stop)
             if stop_depth <= last_stop_depth:
-                # Last stop - check ascent to surface
                 ascent_seg_time = stop_depth / ascent_rate
                 test_tissues = deco_model.load(
                     tissues, abs_p_stop, ascent_seg_time, current_gas, -ascent_rate_bar
@@ -284,7 +329,6 @@ def plan_dive(
                 if test_ceiling <= const.SURFACE_PRESSURE:
                     break
             else:
-                # Check ascent to next stop (3m shallower)
                 ascent_seg_time = 3.0 / ascent_rate
                 test_tissues = deco_model.load(
                     tissues, abs_p_stop, ascent_seg_time, current_gas, -ascent_rate_bar
@@ -299,12 +343,18 @@ def plan_dive(
             po2 = (current_gas.o2 / 100.0) * abs_p_stop
             cns_tracker.update(po2, 1.0)
             otu_tracker.update(po2, 1.0)
+            if _track_enabled:
+                _track_gas(current_gas, 1.0, abs_p_stop, sac_deco)
+            if _on_back_gas:
+                _back_gas_ascent_litres += sac_bottom * 1.0 * (abs_p_stop / surface_pressure)
             stop_time += 1.0
             runtime += 1.0
 
         if stop_time > 0:
             stops.append(DecoStop(depth=stop_depth, time=stop_time))
             total_deco_time += stop_time
+            _stop_runtimes[stop_depth] = round(runtime, 2)
+        _profile.append((round(runtime, 2), stop_depth))
 
         # Ascend 3m to next stop (or to surface from last stop)
         if stop_depth <= last_stop_depth:
@@ -313,21 +363,43 @@ def plan_dive(
                 tissues, abs_p_stop, ascent_time, current_gas, -ascent_rate_bar
             )
             avg_p = abs_p_stop - (stop_depth * const.METER_TO_BAR / 2.0)
+            next_profile_depth = 0.0
         else:
             ascent_time = 3.0 / ascent_rate
             tissues = deco_model.load(
                 tissues, abs_p_stop, ascent_time, current_gas, -ascent_rate_bar
             )
             avg_p = abs_p_stop - (3.0 * const.METER_TO_BAR / 2.0)
+            next_profile_depth = stop_depth - 3.0
 
         po2 = (current_gas.o2 / 100.0) * avg_p
         cns_tracker.update(po2, ascent_time)
         otu_tracker.update(po2, ascent_time)
+        if _track_enabled:
+            _track_gas(current_gas, ascent_time, avg_p, sac_deco)
+        if _on_back_gas:
+            _back_gas_ascent_litres += sac_bottom * ascent_time * (avg_p / surface_pressure)
         runtime += ascent_time
+        _profile.append((round(runtime, 2), next_profile_depth))
 
         if stop_depth <= last_stop_depth:
             break
         stop_depth -= 3.0
+
+    # Build gas_usage from tracked consumption
+    _gas_usage: dict[str, GasUsage] = {}
+    if _track_enabled:
+        all_divegases = [back_gas] + (deco_gases or [])
+        all_cylinders_list = (
+            ([back_cylinder] if back_cylinder else []) +
+            (deco_cylinders if deco_cylinders else [])
+        )
+        for i, g in enumerate(all_divegases):
+            lbl = _gas_label(g)
+            cyl = all_cylinders_list[i] if i < len(all_cylinders_list) else None
+            consumed = _gas_consumed.get(lbl, 0.0)
+            if cyl is not None:
+                _gas_usage[lbl] = GasUsage(gas=g, cylinder=cyl, consumed_litres=consumed)
 
     return DiveSummary(
         runtime=round(runtime, 1),
@@ -338,5 +410,9 @@ def plan_dive(
         cns_percent=round(cns_tracker.cns_percent, 1),
         otu=round(otu_tracker.otu, 1),
         ndl=None,
+        gas_usage=_gas_usage,
         max_gas_density=round(max_gas_density, 3),
+        stop_runtimes=_stop_runtimes,
+        profile=_profile,
+        back_gas_ascent_litres=round(_back_gas_ascent_litres, 2),
     )
