@@ -209,3 +209,7 @@ class DiveSummary:
     stop_runtimes: dict[float, float] = field(default_factory=dict)
     profile: list[tuple[float, float]] = field(default_factory=list)
     back_gas_ascent_litres: float = 0.0
+    ceiling_profile: list[tuple[float, float, float]] = field(default_factory=list)
+    # (time_min, diver_depth_m, ceiling_depth_m) — sampled at each profile waypoint
+    gas_pressure_profile: dict[str, list[tuple[float, float]]] = field(default_factory=dict)
+    # gas_label -> [(time_min, bar_remaining), ...]

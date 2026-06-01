@@ -1,0 +1,7 @@
+.
+streamlit>=1.32
+plotly>=5.20
+pandas>=2.0
+tabulate>=0.9
+matplotlib>=3.8
+streamlit-plotly-events>=0.0.6

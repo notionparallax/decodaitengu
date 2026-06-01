@@ -176,6 +176,32 @@ def plan_dive(
     # Profile and stop runtime tracking
     _profile: list[tuple[float, float]] = [(0.0, 0.0)]
     _stop_runtimes: dict[float, float] = {}
+    _ceiling_profile: list[tuple[float, float, float]] = [(0.0, 0.0, 0.0)]
+    _gas_pressure_profile: dict[str, list[tuple[float, float]]] = {}
+
+    # Build cylinder lookup for gas pressure profile snapshots
+    _cylinders_by_label: dict[str, Cylinder] = {}
+    if _track_enabled:
+        _all_divegases_list = [back_gas] + (deco_gases or [])
+        _all_cyls_list = (
+            ([back_cylinder] if back_cylinder else []) +
+            (deco_cylinders if deco_cylinders else [])
+        )
+        for _dg, _dc in zip(_all_divegases_list, _all_cyls_list):
+            _cylinders_by_label[_gas_label(_dg)] = _dc
+        for _lbl, _cyl in _cylinders_by_label.items():
+            _gas_pressure_profile[_lbl] = [(0.0, round(_cyl.fill_bar, 1))]
+
+    def _snapshot_state(t: float, d: float, snap_tissues, snap_gf: float) -> None:
+        """Record ceiling depth and gas pressures at a profile waypoint."""
+        ceiling_p = deco_model.ceiling(snap_tissues, snap_gf)
+        ceiling_d = max(0.0, _pressure_to_depth(ceiling_p))
+        _ceiling_profile.append((round(t, 2), round(d, 1), round(ceiling_d, 1)))
+        if _track_enabled:
+            for _lbl, _cyl in _cylinders_by_label.items():
+                _consumed = _gas_consumed.get(_lbl, 0.0)
+                _remaining = max(0.0, _cyl.fill_bar - _consumed / _cyl.volume_litres)
+                _gas_pressure_profile[_lbl].append((round(t, 2), round(_remaining, 1)))
 
     # -- DESCENT (with optional stops) --
     descent_rate_bar = descent_rate * const.METER_TO_BAR
@@ -215,6 +241,7 @@ def plan_dive(
             _track_gas(back_gas, stop_time, stop_p, sac_bottom)
         runtime += stop_time
         descent_time += stop_time
+        _snapshot_state(runtime, stop_depth, tissues, gf_low)
         _profile.append((round(runtime, 2), stop_depth))
         _prev_depth = stop_depth
 
@@ -230,6 +257,7 @@ def plan_dive(
         _track_gas(back_gas, final_seg_time, avg_descent_pressure, sac_bottom)
     runtime += final_seg_time
     descent_time += final_seg_time
+    _snapshot_state(runtime, depth, tissues, gf_low)
     _profile.append((round(runtime, 2), depth))
 
     # -- BOTTOM --
@@ -248,6 +276,7 @@ def plan_dive(
 
     if _track_enabled:
         _track_gas(back_gas, bottom_duration, abs_p_bottom, sac_bottom)
+    _snapshot_state(runtime, depth, tissues, gf_low)
     _profile.append((round(runtime, 2), depth))
 
     # Max gas density starts at max depth on back gas
@@ -284,6 +313,7 @@ def plan_dive(
 
         tissues = test_tissues
         runtime += ascent_time
+        _snapshot_state(runtime, 0.0, tissues, gf_high)
         _profile.append((round(runtime, 2), 0.0))
 
         return DiveSummary(
@@ -299,6 +329,8 @@ def plan_dive(
             stop_runtimes={},
             profile=_profile,
             back_gas_ascent_litres=0.0,
+            ceiling_profile=_ceiling_profile,
+            gas_pressure_profile=_gas_pressure_profile,
         )
 
     # Deco dive - ascend to first stop
@@ -323,6 +355,7 @@ def plan_dive(
         _back_gas_ascent_litres += sac_bottom * free_ascent_time * (avg_p / surface_pressure)
         runtime += free_ascent_time
         current_depth = first_stop_depth
+    _snapshot_state(runtime, first_stop_depth, tissues, gf_low)
     _profile.append((round(runtime, 2), first_stop_depth))
 
     # Process each 3m stop from first_stop_depth down to last_stop_depth.
@@ -395,6 +428,7 @@ def plan_dive(
             stops.append(DecoStop(depth=stop_depth, time=stop_time))
             total_deco_time += stop_time
             _stop_runtimes[stop_depth] = round(runtime, 2)
+        _snapshot_state(runtime, stop_depth, tissues, current_gf)
         _profile.append((round(runtime, 2), stop_depth))
 
         # Ascend 3m to next stop (or to surface from last stop)
@@ -421,6 +455,7 @@ def plan_dive(
         if _on_back_gas:
             _back_gas_ascent_litres += sac_bottom * ascent_time * (avg_p / surface_pressure)
         runtime += ascent_time
+        _snapshot_state(runtime, next_profile_depth, tissues, next_gf)
         _profile.append((round(runtime, 2), next_profile_depth))
 
         if stop_depth <= last_stop_depth:
@@ -456,4 +491,6 @@ def plan_dive(
         stop_runtimes=_stop_runtimes,
         profile=_profile,
         back_gas_ascent_litres=round(_back_gas_ascent_litres, 2),
+        ceiling_profile=_ceiling_profile,
+        gas_pressure_profile=_gas_pressure_profile,
     )
