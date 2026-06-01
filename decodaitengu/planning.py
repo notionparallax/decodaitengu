@@ -108,6 +108,7 @@ def plan_dive(
     sac_deco: float = 17.0,
     back_cylinder: Cylinder | None = None,
     deco_cylinders: list[Cylinder] | None = None,
+    descent_stops: list[tuple[float, float]] | None = None,
 ) -> DiveSummary:
     """Plan a dive and return a complete summary.
 
@@ -130,6 +131,9 @@ def plan_dive(
     :param sac_deco: Surface-equivalent SAC [L/min] for deco stops and ascent. Default 17.
     :param back_cylinder: Back gas cylinder. If provided, gas_usage is populated.
     :param deco_cylinders: Deco gas cylinders, parallel to deco_gases list.
+    :param descent_stops: Optional list of (depth_m, time_min) stops to make during
+        descent (e.g. S-drill at 5m). Stops are sorted by depth and must be shallower
+        than the target depth. Tissue loading is computed correctly for each segment.
     :returns: DiveSummary with all dive information.
     """
     if back_gas is None:
@@ -173,22 +177,59 @@ def plan_dive(
     _profile: list[tuple[float, float]] = [(0.0, 0.0)]
     _stop_runtimes: dict[float, float] = {}
 
-    # -- DESCENT --
-    descent_time = depth / descent_rate
+    # -- DESCENT (with optional stops) --
     descent_rate_bar = descent_rate * const.METER_TO_BAR
-    tissues = deco_model.load(
-        tissues, const.SURFACE_PRESSURE, descent_time, back_gas, descent_rate_bar
-    )
 
-    avg_descent_pressure = const.SURFACE_PRESSURE + (depth * const.METER_TO_BAR / 2.0)
+    # Build ordered list of descent waypoints: (depth, stop_time)
+    # Sort shallower-first so we descend through them in order
+    _descent_stops: list[tuple[float, float]] = []
+    if descent_stops:
+        _descent_stops = sorted(
+            [(float(d), float(t)) for d, t in descent_stops if 0 < d < depth],
+            key=lambda x: x[0],
+        )
+
+    _prev_depth = 0.0
+    descent_time = 0.0
+    runtime = 0.0
+    for stop_depth, stop_time in _descent_stops:
+        seg_time = (stop_depth - _prev_depth) / descent_rate
+        seg_start_p = _depth_to_pressure(_prev_depth)
+        tissues = deco_model.load(tissues, seg_start_p, seg_time, back_gas, descent_rate_bar)
+        avg_seg_p = (_depth_to_pressure(_prev_depth) + _depth_to_pressure(stop_depth)) / 2.0
+        po2_seg = (back_gas.o2 / 100.0) * avg_seg_p
+        cns_tracker.update(po2_seg, seg_time)
+        otu_tracker.update(po2_seg, seg_time)
+        if _track_enabled:
+            _track_gas(back_gas, seg_time, avg_seg_p, sac_bottom)
+        runtime += seg_time
+        descent_time += seg_time
+
+        # Stop at this depth
+        stop_p = _depth_to_pressure(stop_depth)
+        po2_stop = (back_gas.o2 / 100.0) * stop_p
+        tissues = deco_model.load(tissues, stop_p, stop_time, back_gas, 0.0)
+        cns_tracker.update(po2_stop, stop_time)
+        otu_tracker.update(po2_stop, stop_time)
+        if _track_enabled:
+            _track_gas(back_gas, stop_time, stop_p, sac_bottom)
+        runtime += stop_time
+        descent_time += stop_time
+        _profile.append((round(runtime, 2), stop_depth))
+        _prev_depth = stop_depth
+
+    # Final descent segment from last waypoint to target depth
+    final_seg_time = (depth - _prev_depth) / descent_rate
+    seg_start_p = _depth_to_pressure(_prev_depth)
+    tissues = deco_model.load(tissues, seg_start_p, final_seg_time, back_gas, descent_rate_bar)
+    avg_descent_pressure = (_depth_to_pressure(_prev_depth) + _depth_to_pressure(depth)) / 2.0
     po2_descent = (back_gas.o2 / 100.0) * avg_descent_pressure
-    cns_tracker.update(po2_descent, descent_time)
-    otu_tracker.update(po2_descent, descent_time)
-
-    runtime = descent_time
-
+    cns_tracker.update(po2_descent, final_seg_time)
+    otu_tracker.update(po2_descent, final_seg_time)
     if _track_enabled:
-        _track_gas(back_gas, descent_time, avg_descent_pressure, sac_bottom)
+        _track_gas(back_gas, final_seg_time, avg_descent_pressure, sac_bottom)
+    runtime += final_seg_time
+    descent_time += final_seg_time
     _profile.append((round(runtime, 2), depth))
 
     # -- BOTTOM --
