@@ -187,7 +187,7 @@ def plan_dive(
             ([back_cylinder] if back_cylinder else []) +
             (deco_cylinders if deco_cylinders else [])
         )
-        for _dg, _dc in zip(_all_divegases_list, _all_cyls_list):
+        for _dg, _dc in zip(_all_divegases_list, _all_cyls_list, strict=True):
             _cylinders_by_label[_gas_label(_dg)] = _dc
         for _lbl, _cyl in _cylinders_by_label.items():
             _gas_pressure_profile[_lbl] = [(0.0, round(_cyl.fill_bar, 1))]
