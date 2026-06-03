@@ -99,6 +99,8 @@ def _exponential_cns_rate(po2: float) -> float:
                + 0.00090*exp(30.05712*(PO2-1.35667)) / (1+exp(-120*(PO2-1.35667)))
 
     Returns CNS% accumulated per minute at the given PO2.
+    The formula is only valid for PO2 in the range 0.5–1.6 bar; values above 1.6
+    are clamped to the maximum NOAA rate to avoid exponential overflow.
 
     :param po2: Partial pressure of oxygen [bar].
     :returns: CNS% accumulated per minute at this PO2.
@@ -106,10 +108,16 @@ def _exponential_cns_rate(po2: float) -> float:
     if po2 <= 0.5:
         return 0.0
 
+    # Clamp to formula's valid domain to prevent exponential overflow.
+    # The NOAA table only defines limits up to PO2=1.6; above that the
+    # exponential term diverges rapidly. Clamping at 1.6 means any PO2 > 1.6
+    # accumulates at the maximum NOAA rate (~2.22%/min = 100%/45min).
+    clamped_po2 = min(po2, 1.6)
+
     # Smooth continuous formula matching NOAA limits
-    x = po2 - 1.35667
+    x = clamped_po2 - 1.35667
     exp_term = 0.00090 * math.exp(30.05712 * x) / (1.0 + math.exp(-120.0 * x))
-    rate = 0.39419 * po2 * po2 - 0.14119 * po2 + 0.08293 + exp_term
+    rate = 0.39419 * clamped_po2 * clamped_po2 - 0.14119 * clamped_po2 + 0.08293 + exp_term
     return max(0.0, rate)
 
 

@@ -148,11 +148,11 @@ def _validate_inputs(
     gf: tuple[float, float],
     deco_gases: list[Gas],
     surface_pressure: float,
+    max_po2: float,
 ) -> tuple[float, float]:
     """Validate all plan_dive inputs and return (gf_low, gf_high) as fractions.
 
     :raises ValueError: If any input is invalid.
-    :raises NotImplementedError: If altitude diving is attempted.
     """
     if not math.isfinite(depth) or depth <= 0:
         raise ValueError(f"depth must be a positive finite number, got {depth}")
@@ -188,6 +188,14 @@ def _validate_inputs(
             raise ValueError(
                 f"deco_gases[{i}] switch_depth ({g.switch_depth}m) must be less than "
                 f"dive depth ({depth}m)"
+            )
+        # Validate PO2 at switch depth (0.01 bar tolerance for floating-point)
+        abs_p_at_switch = g.switch_depth * const.METER_TO_BAR + surface_pressure
+        po2_at_switch = (g.o2 / 100.0) * abs_p_at_switch
+        if po2_at_switch > max_po2 + 0.01:
+            raise ValueError(
+                f"deco_gases[{i}] ({g}) has PO2 {po2_at_switch:.2f} bar at switch depth "
+                f"{g.switch_depth}m, which exceeds max_po2={max_po2} bar"
             )
 
     # Validate surface pressure (reasonable range for altitude diving)
@@ -546,6 +554,7 @@ def plan_dive(
     back_cylinder: Cylinder | None = None,
     deco_cylinders: list[Cylinder] | None = None,
     descent_stops: list[tuple[float, float]] | None = None,
+    max_po2: float = 1.61,
 ) -> DiveSummary:
     """Plan a dive and return a complete summary.
 
@@ -574,6 +583,9 @@ def plan_dive(
     :param descent_stops: Optional list of (depth_m, time_min) stops to make during
         descent (e.g. S-drill at 5m). Stops are sorted by depth and must be shallower
         than the target depth. Tissue loading is computed correctly for each segment.
+    :param max_po2: Maximum allowed PO2 for deco gas switches [bar]. Default 1.61
+        (accommodates standard O2 at 6m in seawater). Set lower for more
+        conservative limits or higher for advanced configurations.
     :returns: DiveSummary with all dive information.
     """
     if back_gas is None:
@@ -593,6 +605,7 @@ def plan_dive(
         gf,
         deco_gases,
         surface_pressure,
+        max_po2,
     )
     deco_model = _resolve_model(model, gf_low, gf_high)
 

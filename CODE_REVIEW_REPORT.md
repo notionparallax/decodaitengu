@@ -1,142 +1,90 @@
-# Code Review Report: decodaitengu
+# Code Review Report: decodaitengu (Updated)
 
 Date: 2026-06-03
 Reviewer: GitHub Copilot (GPT-5.3-Codex)
-Scope: Whole repository with emphasis on life-critical dive-planning correctness, reliability, maintainability, readability, extensibility, usability, type safety, and documentation quality.
-
-## Executive Summary
-This codebase has a strong modernized core (typed dataclasses, clear decomposition model modules, passing tests, and lint-clean code), but it is not yet at the bar expected for life-critical dive planning software.
-
-Primary concern: **unsafe/invalid input paths are not robustly rejected**, and there is an acknowledged algorithmic divergence from external reference software where the model can be less conservative in some profiles. Combined with stale/inaccurate public documentation and gaps in verification strategy, this creates operational and trust risk.
-
-## Method
-- Source review of core computational modules, public API, tests, packaging/CI, and docs.
-- Evidence-based checks run locally:
-  - `pytest`: **44 passed**
-  - `ruff check`: **passed**
-  - `mypy`: **failed** with strict-mode violations
-- Additional runtime probes on invalid inputs to confirm behavior.
+Scope: Full repository, with priority on life-critical dive-planning accuracy and reliability, then maintainability, readability, extensibility, usability, doc quality, and typing.
 
 ## Findings (Prioritized)
 
-### Critical
-1. Missing safety validation on core dive inputs allows physically invalid plans and runtime faults
-- Why it matters: In a life-critical planner, invalid configuration must fail fast with explicit errors; silent acceptance or divide-by-zero crashes is unacceptable.
-- Evidence:
-  - Gas composition has no constructor validation: `Gas` can represent impossible mixes where O2 + He > 100, yielding negative N2 via computed property.
-    - `decodaitengu/types.py:39`
-    - `decodaitengu/types.py:57`
-  - `plan_dive` normalizes GF values but does not enforce safe domain/range or monotonicity.
-    - `decodaitengu/planning.py:145`
-  - Rate/division points can raise runtime exceptions when rates are zero.
-    - `decodaitengu/planning.py:251`
-    - `decodaitengu/planning.py:303`
-    - `decodaitengu/planning.py:311`
-- Reproduced behavior (local probe):
-  - Invalid gas `Gas(80, 30)` was accepted and produced a plan.
-  - `ascent_rate=0` raised `ZeroDivisionError` instead of a controlled validation error.
-  - `gf=(200, 200)` was accepted and produced a plan.
-- Recommendation: Introduce explicit validation at API boundary and in data types (gas fractions, GF ranges/order, non-zero positive rates/times/depths, switch depth bounds, finite values).
-
-2. Known model divergence includes less-conservative output in some cases without explicit safety guardrails
-- Why it matters: You explicitly prioritize accuracy/reliability for life-critical use; known non-conservative differences require formal control and validation framing.
-- Evidence:
-  - Tests document algorithm differences from Subsurface including cases where this model is less conservative.
-    - `decodaitengu/tests/test_modern.py:352`
-    - `decodaitengu/tests/test_modern.py:356`
-    - `decodaitengu/tests/test_modern.py:359`
-- Recommendation: Add formal acceptance criteria for divergence bounds, external corpus validation against trusted references, and policy for conservative fallback where divergence direction is unfavorable.
-
 ### High
-3. Public API documentation is contradictory and currently misleading
-- Why it matters: Users can follow documented examples that fail at runtime, degrading trust and increasing misuse risk.
+1. No oxygen partial-pressure safety envelope validation for configured gas switch depths
+- Why this matters: The planner now validates many inputs, but it can still accept physiologically unsafe gas-switch plans without warning.
 - Evidence:
-  - README says legacy API is still available and shows `create()` usage:
-    - `README.md:59`
-    - `README.md:64`
-  - Actual implementation states legacy API removed and raises runtime error:
-    - `decodaitengu/__init__.py:83`
-    - `decodaitengu/__init__.py:88`
-  - Package docstring examples reference non-existent field `result.total_deco`:
-    - `decodaitengu/__init__.py:27`
-    - `decodaitengu/__init__.py:104`
-- Recommendation: Align README/package docstrings with actual API (`plan_dive`, `total_deco_time`) and clearly mark legacy API status.
-
-4. Sphinx docs are largely stale to legacy `decotengu` namespace and old architecture
-- Why it matters: Documentation appears out of sync with shipped code; this is a major maintainability and usability risk.
-- Evidence:
-  - Legacy module references throughout docs:
-    - `doc/usage.rst:4`
-    - `doc/model.rst:4`
-    - `doc/api.rst:16`
-    - `doc/api.rst:18`
-    - `doc/api.rst:40`
-  - Legacy/obsolete claims (e.g., Python 3.3):
-    - `doc/info.rst:37`
-- Recommendation: Regenerate docs from current package (`decodaitengu`), remove dead references, and enforce docs CI build.
-
-5. Declared strict typing posture is not currently true in CI reality
-- Why it matters: For life-critical logic, type discipline is part of defect prevention.
-- Evidence:
-  - Strict mode configured:
-    - `pyproject.toml:58`
-  - Current mypy run reports errors (missing annotations):
-    - `decodaitengu/planning.py:194`
-    - `decodaitengu/tests/test_modern.py:370`
-- Recommendation: Make mypy strict pass mandatory before release.
+  - Validation checks switch-depth sign/range only, not PO2 safety at switch depth:
+    - `decodaitengu/planning.py:185`
+    - `decodaitengu/planning.py:187`
+  - Runtime probe accepted a plan with 100% O2 switch at 30 m (very high PO2) and returned a schedule successfully.
+- Risk: Unsafe user configuration may look valid and produce misleadingly authoritative output.
+- Recommendation: Add explicit configurable PO2 limits (for travel/deco) and reject switch points exceeding limit; include tests for over-limit rejection.
 
 ### Medium
-6. Parameter coupling for gas tracking can fail with non-domain errors
-- Why it matters: Mismatched `deco_gases` and `deco_cylinders` currently relies on `zip(..., strict=True)` behavior, which can produce generic exceptions rather than domain-specific validation.
+2. Cylinder mismatch error message is clear but contains duplicated wording
 - Evidence:
-  - `decodaitengu/planning.py:166`
-  - `decodaitengu/planning.py:189`
-- Recommendation: Replace implicit structural failure with explicit pre-check and actionable `ValueError` message.
+  - Duplicated segment in error text construction:
+    - `decodaitengu/planning.py:620`
+- Impact: Readability/UX issue when diagnosing input mistakes.
+- Recommendation: Fix the duplicate fragment in the exception string.
 
-7. Verification strategy is mostly regression/example driven; lacks stronger safety-oriented test classes
-- Why it matters: 44 passing tests are good, but insufficient for high-assurance planning software.
+3. Internal docstring drift: mentions a non-existent exception path
 - Evidence:
-  - Test suite currently focused in one file with limited invalid-input coverage.
-    - `decodaitengu/tests/test_modern.py`
-  - Only one explicit ValueError validation test identified.
-    - `decodaitengu/tests/test_modern.py:286`
-- Recommendation: Add property-based tests, monotonicity invariants, edge-condition fuzzing, and golden-reference datasets with pass/fail thresholds.
+  - `_validate_inputs` docstring claims `NotImplementedError` for altitude diving, but altitude is now implemented and validated:
+    - `decodaitengu/planning.py:155`
+- Impact: Minor maintenance confusion.
+- Recommendation: Remove/update that docstring line.
 
-8. `plan_dive` is monolithic and hard to reason about in audits
-- Why it matters: Large, multi-responsibility functions increase audit complexity and change risk.
+4. Packaging metadata lags CI support matrix
 - Evidence:
-  - Long orchestrator function combining model loading, toxicity, gas tracking, profile capture, and stop logic.
-    - `decodaitengu/planning.py:95`
-- Recommendation: Decompose into validated phases (input validation, descent builder, ascent solver, tracking collectors) with unit-level contracts.
+  - CI tests Python 3.14:
+    - `.github/workflows/ci.yml:14`
+  - Project classifiers list through 3.13 only:
+    - `pyproject.toml:22`
+- Impact: Minor ecosystem signaling mismatch.
+- Recommendation: Add Python 3.14 classifier if officially supported.
 
-## What Is Strong
-- Core equation implementation is clearly separated and documented.
-  - `decodaitengu/models/base.py`
-- Model parameter tables are explicit and readable.
-  - `decodaitengu/models/zhl16b.py`
-  - `decodaitengu/models/zhl16c.py`
-- Tests and lint are currently green:
-  - `pytest`: 44 passed
-  - `ruff`: passed
-- Data model uses dataclasses and useful typing patterns.
-  - `decodaitengu/types.py`
+## Major Improvements Since Last Review
 
-## Framework-Oriented Assessment
-Using a lightweight safety-oriented review lens (requirements traceability, defensive design, verification depth, and operational clarity):
-- Requirements traceability to decompression references: **Partial**
-- Defensive input handling and fail-safe behavior: **Insufficient**
-- Verification breadth for safety-critical confidence: **Insufficient**
-- Documentation/operational correctness: **Insufficient**
-- Maintainability/modularity: **Moderate**
+1. Input validation hardening is substantial
+- Gas and cylinder validation added in data types:
+  - `decodaitengu/types.py:57`
+  - `decodaitengu/types.py:96`
+- Planner parameter validation now covers depth/time/rates/GF/surface pressure/deco switch bounds:
+  - `decodaitengu/planning.py:140`
 
-## Recommended Remediation Roadmap
-1. Safety gate first: implement strict input validation and explicit domain errors for all public API inputs.
-2. Verification uplift: add formal external validation matrix (Subsurface + known tables + edge-case corpus), with documented acceptance thresholds.
-3. Documentation correction sprint: remove legacy claims, update all docs to `decodaitengu`, and enforce docs build in CI.
-4. Type gate hardening: resolve mypy strict failures and require strict pass on protected branches.
-5. Refactor for auditability: split `plan_dive` into smaller validated components and add invariant tests per component.
+2. Planner architecture is significantly more maintainable
+- `plan_dive` decomposed into focused helpers (`_validate_inputs`, `_resolve_model`, `_descend`, `_bottom`, `_ascend_with_deco`) and structured state object:
+  - `decodaitengu/planning.py:140`
+  - `decodaitengu/planning.py:219`
+  - `decodaitengu/planning.py:303`
+  - `decodaitengu/planning.py:331`
+  - `decodaitengu/planning.py:527`
+
+3. Altitude handling now appears implemented end-to-end
+- Surface pressure is threaded through depth/pressure conversions and model init:
+  - `decodaitengu/planning.py:52`
+  - `decodaitengu/planning.py:57`
+  - `decodaitengu/planning.py:598`
+
+4. Test suite coverage and rigor improved dramatically
+- Validation-focused tests:
+  - `decodaitengu/tests/test_validation.py`
+- Property-based invariants:
+  - `decodaitengu/tests/test_properties.py`
+- Documentation smoke tests:
+  - `decodaitengu/tests/test_doc_examples.py`
+- Divergence/regression integration checks:
+  - `decodaitengu/tests/integration/test_divergence.py`
+
+5. Documentation/API consistency improved
+- README and package docstring now align with `total_deco_time` and legacy-API removal.
+  - `README.md:57`
+  - `decodaitengu/__init__.py:27`
+
+## Verification Results (Current State)
+- `pytest -q`: 168 passed
+- `ruff check decodaitengu`: passed
+- `mypy --strict decodaitengu`: success (no issues in 20 source files)
 
 ## Overall Verdict
-**Not yet suitable for high-assurance, life-critical use without additional safety controls and verification hardening.**
+The repository has moved from "not yet suitable" to **promising and materially improved**, with strong progress on safety validation, typing, modularity, and verification discipline.
 
-The computational core looks promising, but correctness assurance and operational safety posture need to be materially strengthened before relying on it as a primary planning authority.
+For life-critical trust, the main remaining technical gap is explicit PO2 safety-envelope validation for gas-switch configuration. Addressing that, plus the minor documentation/metadata polish items above, would put the project in notably better operational shape.
