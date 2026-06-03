@@ -152,7 +152,6 @@ def _validate_inputs(
     """Validate all plan_dive inputs and return (gf_low, gf_high) as fractions.
 
     :raises ValueError: If any input is invalid.
-    :raises NotImplementedError: If altitude diving is attempted.
     """
     if not math.isfinite(depth) or depth <= 0:
         raise ValueError(f"depth must be a positive finite number, got {depth}")
