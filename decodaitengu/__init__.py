@@ -24,7 +24,7 @@ Quick start::
         gf=(30, 85),
     )
     print(f"Runtime: {result.runtime:.0f} min")
-    print(f"Deco: {result.total_deco:.0f} min")
+    print(f"Deco: {result.total_deco_time:.0f} min")
     for stop in result.stops:
         print(f"  {stop.depth:.0f}m for {stop.time:.0f} min")
 
@@ -101,7 +101,7 @@ def create(*args: object, **kwargs: object) -> None:
         "  NEW (decodaitengu):\n"
         "    from decodaitengu import plan_dive, Gas\n"
         "    result = plan_dive(depth=35, bottom_time=40, back_gas=Gas(21, 0))\n"
-        "    print(result.total_deco)\n"
+        "    print(result.total_deco_time)\n"
         "\n"
         "See README.md or https://github.com/notionparallax/decodaitengu for full docs."
     )

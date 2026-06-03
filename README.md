@@ -56,15 +56,25 @@ result = plan_dive(depth=40, bottom_time=25, model=ZHL16B)
 
 ## Legacy API
 
-The original DecoTengu API is still available for backward compatibility:
+The original DecoTengu Engine-based API has been removed. Calling
+`decodaitengu.create()` raises `RuntimeError` with migration instructions.
+
+Migration from old `decotengu`:
 
 ```python
-import decodaitengu
+# OLD (decotengu v0.x):
+#   import decotengu
+#   engine = decotengu.create()
+#   engine.add_gas(0, 21)
+#   profile = engine.calculate(35, 40)
+#   list(profile)
+#   print(engine.deco_table.total)
 
-engine = decodaitengu.create()
-engine.add_gas(0, 21)
-profile = list(engine.calculate(35, 40))
-print(engine.deco_table.total)  # 44.0
+# NEW (decodaitengu v1.x):
+from decodaitengu import plan_dive, Gas
+
+result = plan_dive(depth=35, bottom_time=40, back_gas=Gas(21, 0), gf=(30, 85))
+print(result.total_deco_time)
 ```
 
 ## Development
