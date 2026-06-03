@@ -127,6 +127,8 @@ def plan_dive(
     :param last_stop_depth: Depth of last deco stop [m]. Default 3.
     :param model: Decompression model class or instance. Default ZHL16C.
     :param surface_pressure: Surface pressure [bar]. Default 1.01325.
+        NOTE: Altitude diving is not yet implemented. Passing a value other
+        than the default will raise NotImplementedError.
     :param cns_method: CNS calculation method. Default EXPONENTIAL.
     :param sac_bottom: Surface-equivalent SAC [L/min] for descent and bottom. Default 20.
     :param sac_deco: Surface-equivalent SAC [L/min] for deco stops and ascent. Default 17.
@@ -180,6 +182,14 @@ def plan_dive(
                 f"deco_gases[{i}] switch_depth ({g.switch_depth}m) must be less than "
                 f"dive depth ({depth}m)"
             )
+
+    # Gate altitude diving until fully implemented (see issue #3)
+    if abs(surface_pressure - const.SURFACE_PRESSURE) > 1e-6:
+        raise NotImplementedError(
+            f"Altitude diving is not yet supported. surface_pressure must be "
+            f"{const.SURFACE_PRESSURE} bar (sea level). "
+            f"Got {surface_pressure} bar. See issue #3 for progress."
+        )
 
     if model is None:
         deco_model: ZHL16GF = ZHL16C(gf_low=gf_low, gf_high=gf_high)
