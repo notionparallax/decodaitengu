@@ -244,6 +244,31 @@ class TestPlanDive:
         result = plan_dive(depth=18, bottom_time=30, gf=(100, 100))
         assert result.total_deco_time == 0.0
         assert result.stops == []
+        # NDL should be computed for no-deco dives
+        assert result.ndl is not None
+        assert result.ndl > 0
+
+    def test_ndl_is_none_for_deco_dives(self):
+        """Deco dives should have ndl=None."""
+        result = plan_dive(depth=40, bottom_time=30, gf=(30, 85))
+        assert result.total_deco_time > 0
+        assert result.ndl is None
+
+    def test_ndl_decreases_with_longer_bottom_time(self):
+        """Longer bottom time should leave less NDL remaining."""
+        short = plan_dive(depth=20, bottom_time=10, gf=(100, 100))
+        long = plan_dive(depth=20, bottom_time=30, gf=(100, 100))
+        assert short.ndl is not None
+        assert long.ndl is not None
+        assert short.ndl > long.ndl
+
+    def test_ndl_decreases_with_depth(self):
+        """Deeper dives should have shorter NDL."""
+        shallow = plan_dive(depth=15, bottom_time=10, gf=(100, 100))
+        deep = plan_dive(depth=30, bottom_time=10, gf=(100, 100))
+        assert shallow.ndl is not None
+        assert deep.ndl is not None
+        assert shallow.ndl > deep.ndl
 
     def test_air_deep_requires_deco(self):
         """Deep air dive should produce deco stops."""

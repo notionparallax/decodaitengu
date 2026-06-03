@@ -353,7 +353,24 @@ def plan_dive(
     surface_ceiling = deco_model.ceiling(test_tissues, gf_high)
 
     if surface_ceiling <= const.SURFACE_PRESSURE:
-        # NDL dive - just ascend
+        # NDL dive - compute remaining no-deco time via binary search
+        # NDL = additional minutes at depth before a deco stop would be required
+        ndl_lo, ndl_hi = 0.0, 600.0  # search up to 10 hours
+        for _ in range(30):  # 30 iterations gives ~0.001 min precision
+            ndl_mid = (ndl_lo + ndl_hi) / 2.0
+            t_tissues = deco_model.load(tissues, abs_p_bottom, ndl_mid, current_gas, 0.0)
+            t_ascent_time = current_depth / ascent_rate
+            t_tissues_asc = deco_model.load(
+                t_tissues, abs_p_bottom, t_ascent_time, current_gas, -ascent_rate_bar
+            )
+            t_ceiling = deco_model.ceiling(t_tissues_asc, gf_high)
+            if t_ceiling <= const.SURFACE_PRESSURE:
+                ndl_lo = ndl_mid
+            else:
+                ndl_hi = ndl_mid
+        computed_ndl = round(ndl_lo, 0)
+
+        # Ascend
         ascent_time = current_depth / ascent_rate
         avg_ascent_p = abs_p_bottom - (current_depth * const.METER_TO_BAR / 2.0)
         po2_ascent = (current_gas.o2 / 100.0) * avg_ascent_p
@@ -376,7 +393,7 @@ def plan_dive(
             tissues_final=tissues,
             cns_percent=round(cns_tracker.cns_percent, 1),
             otu=round(otu_tracker.otu, 1),
-            ndl=None,
+            ndl=computed_ndl,
             max_gas_density=round(max_gas_density, 3),
             stop_runtimes={},
             profile=_profile,

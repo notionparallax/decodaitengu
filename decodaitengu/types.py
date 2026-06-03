@@ -209,7 +209,8 @@ class DiveSummary:
     :param tissues_final: Final tissue state.
     :param cns_percent: CNS oxygen toxicity percentage.
     :param otu: Oxygen toxicity units (UPTD).
-    :param ndl: No-decompression limit if no deco required [min], else None.
+    :param ndl: No-decompression limit — additional minutes of bottom time remaining
+        before a deco stop would be required [min]. None for deco dives.
     :param gas_usage: Gas consumption by label.
     :param max_gas_density: Maximum gas density encountered during the dive [g/L].
     :param stop_runtimes: Maps stop depth -> cumulative runtime (minutes) at END of that stop.
