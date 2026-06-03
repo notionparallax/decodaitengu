@@ -28,6 +28,7 @@ Reference:
     https://scubaboard.com/community/threads/need-an-excel-formula-that-will-calculate-cns.237903/post-10750263
 """
 
+import math
 from enum import Enum
 
 
@@ -104,8 +105,6 @@ def _exponential_cns_rate(po2: float) -> float:
     """
     if po2 <= 0.5:
         return 0.0
-
-    import math
 
     # Smooth continuous formula matching NOAA limits
     x = po2 - 1.35667
