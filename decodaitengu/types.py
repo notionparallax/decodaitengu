@@ -23,6 +23,8 @@
 from dataclasses import dataclass, field
 from enum import Enum
 
+from . import const
+
 
 class Phase(str, Enum):
     """Dive phase enumeration."""
@@ -138,8 +140,8 @@ class Step:
 
     @property
     def depth(self) -> float:
-        """Depth in metres (assumes 0.09985 bar/m and 1.01325 surface)."""
-        return (self.abs_p - 1.01325) / 0.09985
+        """Depth in metres."""
+        return (self.abs_p - const.SURFACE_PRESSURE) / const.METER_TO_BAR
 
     def __repr__(self) -> str:
         return (
