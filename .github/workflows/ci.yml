@@ -31,8 +31,8 @@ jobs:
           ruff check decodaitengu/
           ruff format --check decodaitengu/
 
-      - name: Type check with mypy
-        run: mypy decodaitengu --ignore-missing-imports
+      - name: Type check with mypy (strict)
+        run: mypy decodaitengu
         if: matrix.python-version == '3.12'
 
       - name: Run tests

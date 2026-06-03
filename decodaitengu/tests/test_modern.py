@@ -367,8 +367,8 @@ class TestSubsurfaceComparison:
     ASCENT_RATE = 10.0
     TOLERANCE = 1  # minutes (1-min resolution from our stop-counting loop)
 
-    def _check_stops(self, result, expected: dict):
-        actual = {s.depth: s.time for s in result.stops}
+    def _check_stops(self, result: object, expected: dict[float, float]) -> None:
+        actual = {s.depth: s.time for s in result.stops}  # type: ignore[attr-defined]
         for depth, exp_time in expected.items():
             actual_time = actual.get(depth, 0)
             assert abs(actual_time - exp_time) <= self.TOLERANCE, (

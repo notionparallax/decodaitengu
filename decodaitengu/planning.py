@@ -47,7 +47,7 @@ from .models import ZHL16C
 from .models.base import ZHL16GF
 from .tracking.cns import CNSMethod, CNSTracker
 from .tracking.otu import OTUTracker
-from .types import Cylinder, DecoStop, DiveSummary, Gas, GasUsage
+from .types import Cylinder, DecoStop, DiveSummary, Gas, GasUsage, TissueState
 
 
 def _depth_to_pressure(depth: float) -> float:
@@ -191,7 +191,7 @@ def plan_dive(
         for _lbl, _cyl in _cylinders_by_label.items():
             _gas_pressure_profile[_lbl] = [(0.0, round(_cyl.fill_bar, 1))]
 
-    def _snapshot_state(t: float, d: float, snap_tissues, snap_gf: float) -> None:
+    def _snapshot_state(t: float, d: float, snap_tissues: TissueState, snap_gf: float) -> None:
         """Record ceiling depth and gas pressures at a profile waypoint."""
         ceiling_p = deco_model.ceiling(snap_tissues, snap_gf)
         ceiling_d = max(0.0, _pressure_to_depth(ceiling_p))
