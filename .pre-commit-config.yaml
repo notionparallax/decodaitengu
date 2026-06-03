@@ -3,11 +3,11 @@ repos:
     hooks:
       - id: ruff-check-ci
         name: ruff check (ci parity)
-        entry: ruff check decodaitengu/
+        entry: .venv/Scripts/python.exe -m ruff check decodaitengu/
         language: system
         pass_filenames: false
       - id: ruff-format-check-ci
         name: ruff format --check (ci parity)
-        entry: ruff format --check decodaitengu/
+        entry: .venv/Scripts/python.exe -m ruff format --check decodaitengu/
         language: system
         pass_filenames: false

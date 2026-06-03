@@ -183,9 +183,8 @@ def plan_dive(
     _cylinders_by_label: dict[str, Cylinder] = {}
     if _track_enabled:
         _all_divegases_list = [back_gas] + (deco_gases or [])
-        _all_cyls_list = (
-            ([back_cylinder] if back_cylinder else []) +
-            (deco_cylinders if deco_cylinders else [])
+        _all_cyls_list = ([back_cylinder] if back_cylinder else []) + (
+            deco_cylinders if deco_cylinders else []
         )
         for _dg, _dc in zip(_all_divegases_list, _all_cyls_list, strict=True):
             _cylinders_by_label[_gas_label(_dg)] = _dc
@@ -372,14 +371,19 @@ def plan_dive(
     while stop_depth >= last_stop_depth:
         abs_p_stop = _depth_to_pressure(stop_depth)
         if first_stop_depth > 0:
-            current_gf = gf_low + (gf_high - gf_low) * (first_stop_depth - stop_depth) / first_stop_depth
+            current_gf = (
+                gf_low + (gf_high - gf_low) * (first_stop_depth - stop_depth) / first_stop_depth
+            )
         else:
             current_gf = gf_high
         current_gf = min(current_gf, gf_high)
         # GF for the NEXT stop (3m shallower) — used in the ascent check
         next_stop_depth = stop_depth - 3.0
         if first_stop_depth > 0 and next_stop_depth > 0:
-            next_gf = gf_low + (gf_high - gf_low) * (first_stop_depth - next_stop_depth) / first_stop_depth
+            next_gf = (
+                gf_low
+                + (gf_high - gf_low) * (first_stop_depth - next_stop_depth) / first_stop_depth
+            )
         else:
             next_gf = gf_high
         next_gf = min(next_gf, gf_high)
@@ -473,9 +477,8 @@ def plan_dive(
     _gas_usage: dict[str, GasUsage] = {}
     if _track_enabled:
         all_divegases = [back_gas] + (deco_gases or [])
-        all_cylinders_list = (
-            ([back_cylinder] if back_cylinder else []) +
-            (deco_cylinders if deco_cylinders else [])
+        all_cylinders_list = ([back_cylinder] if back_cylinder else []) + (
+            deco_cylinders if deco_cylinders else []
         )
         for i, g in enumerate(all_divegases):
             lbl = _gas_label(g)

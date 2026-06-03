@@ -438,4 +438,3 @@ class TestSubsurfaceComparison:
             ascent_rate=self.ASCENT_RATE,
         )
         self._check_stops(result, {18.0: 1, 15.0: 1, 12.0: 2, 9.0: 3, 6.0: 5, 3.0: 12})
-
