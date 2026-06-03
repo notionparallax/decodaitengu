@@ -1,0 +1,55 @@
+{
+  "_meta": {
+    "source": "Subsurface 6.0.5504",
+    "model": "Bühlmann ZHL-16C",
+    "surface_pressure_bar": 1.013,
+    "descent_rate_m_per_min": 60,
+    "ascent_rate_m_per_min": 10,
+    "gf": [50, 70],
+    "notes": "Stop times in minutes at each depth. Total runtime includes descent + bottom + ascent + stops."
+  },
+  "plans": [
+    {
+      "id": "50m_air",
+      "description": "50m/19min, air only, GF 50/70",
+      "depth_m": 50,
+      "bottom_time_min": 19,
+      "back_gas": {"o2": 21, "he": 0},
+      "deco_gases": [],
+      "subsurface_stops": {"15": 3, "12": 4, "9": 7, "6": 12, "3": 29},
+      "subsurface_total_runtime_min": 79,
+      "our_stops": {"15": 2, "12": 4, "9": 5, "6": 11, "3": 25},
+      "divergence_notes": "3m stop: -4min vs Subsurface. Schreiner equation gives slightly less conservatism during ascent phases."
+    },
+    {
+      "id": "50m_air_ean50_o2",
+      "description": "50m/19min, air + EAN50@21m + O2@6m, GF 50/70",
+      "depth_m": 50,
+      "bottom_time_min": 19,
+      "back_gas": {"o2": 21, "he": 0},
+      "deco_gases": [
+        {"o2": 50, "he": 0, "switch_depth_m": 21},
+        {"o2": 100, "he": 0, "switch_depth_m": 6}
+      ],
+      "subsurface_stops": {"15": 1, "12": 3, "9": 4, "6": 4, "3": 8},
+      "subsurface_total_runtime_min": 45,
+      "our_stops": {"15": 1, "12": 3, "9": 3, "6": 4, "3": 12},
+      "divergence_notes": "3m stop: +4min vs Subsurface. Gas switch timing difference — we switch later during free ascent."
+    },
+    {
+      "id": "60m_tx1845_ean50_o2",
+      "description": "60m/14min, Tx18/45 + EAN50@21m + O2@6m, GF 50/70",
+      "depth_m": 60,
+      "bottom_time_min": 14,
+      "back_gas": {"o2": 18, "he": 45},
+      "deco_gases": [
+        {"o2": 50, "he": 0, "switch_depth_m": 21},
+        {"o2": 100, "he": 0, "switch_depth_m": 6}
+      ],
+      "subsurface_stops": {"15": 2, "12": 3, "9": 4, "6": 5, "3": 10},
+      "subsurface_total_runtime_min": 45,
+      "our_stops": {"18": 1, "15": 1, "12": 2, "9": 3, "6": 5, "3": 12},
+      "divergence_notes": "Extra 18m stop (fast He off-gassing). 3m stop: +2min vs Subsurface."
+    }
+  ]
+}

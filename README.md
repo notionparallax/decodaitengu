@@ -67,6 +67,28 @@ profile = list(engine.calculate(35, 40))
 print(engine.deco_table.total)  # 44.0
 ```
 
+## Known Differences from Other Planners
+
+This library uses the analytically-exact Schreiner equation for tissue loading,
+whereas Subsurface (and many dive computers) use the Haldane equation with
+discrete 1-second steps. The two approaches are equivalent at constant depth
+but produce slightly different results during ascent/descent phases.
+
+Key divergences from Subsurface 6.0 (ZHL-16C, GF 50/70):
+
+| Factor | Effect | Typical magnitude |
+|--------|--------|-------------------|
+| Schreiner vs Haldane 1s steps | Less conservative during ascent | ±1–4 min at shallow stops |
+| Gas switch timing (free ascent) | May be more conservative | +2–4 min at 3m for multi-gas |
+| Helium off-gassing | Extra shallow stops for trimix | +1 stop at 18m |
+
+Per-stop divergence is bounded at ≤5 minutes in integration tests. See
+[`tests/integration/reference_data.json`](decodaitengu/tests/integration/reference_data.json)
+for exact Subsurface reference values.
+
+**This library is not a certified dive planning tool. Always validate plans
+against established software and never dive beyond your training.**
+
 ## Development
 
 ```bash
