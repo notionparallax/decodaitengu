@@ -41,17 +41,31 @@ class Gas:
 
     Fractions are expressed as percentages (e.g. 21 for 21% O2).
 
-    :param o2: O2 percentage.
-    :param he: Helium percentage.
+    :param o2: O2 percentage (0-100).
+    :param he: Helium percentage (0-100).
     :param n2: Nitrogen percentage (computed as 100 - o2 - he).
-    :param switch_depth: Depth at which to switch to this gas [m].
+    :param switch_depth: Depth at which to switch to this gas [m] (>= 0).
     :param label: Optional label for the gas mix.
+    :raises ValueError: If fractions are out of range or sum exceeds 100%.
     """
 
     o2: float
     he: float = 0.0
     switch_depth: float = 0.0
     label: str = ""
+
+    def __post_init__(self) -> None:
+        """Validate gas mix fractions."""
+        if not (0.0 <= self.o2 <= 100.0):
+            raise ValueError(f"O2 must be between 0 and 100, got {self.o2}")
+        if not (0.0 <= self.he <= 100.0):
+            raise ValueError(f"He must be between 0 and 100, got {self.he}")
+        if self.o2 + self.he > 100.0:
+            raise ValueError(
+                f"O2 + He must not exceed 100%, got {self.o2} + {self.he} = {self.o2 + self.he}"
+            )
+        if self.switch_depth < 0.0:
+            raise ValueError(f"switch_depth must be >= 0, got {self.switch_depth}")
 
     @property
     def n2(self) -> float:
@@ -71,12 +85,20 @@ class Gas:
 class Cylinder:
     """Cylinder definition for gas consumption tracking.
 
-    :param volume_litres: Water volume of cylinder in litres.
-    :param fill_bar: Fill pressure in bar.
+    :param volume_litres: Water volume of cylinder in litres (must be > 0).
+    :param fill_bar: Fill pressure in bar (must be > 0).
+    :raises ValueError: If volume or fill pressure is not positive.
     """
 
     volume_litres: float
     fill_bar: float
+
+    def __post_init__(self) -> None:
+        """Validate cylinder parameters."""
+        if self.volume_litres <= 0:
+            raise ValueError(f"volume_litres must be positive, got {self.volume_litres}")
+        if self.fill_bar <= 0:
+            raise ValueError(f"fill_bar must be positive, got {self.fill_bar}")
 
     @property
     def total_litres(self) -> float:
