@@ -120,7 +120,8 @@ def plan_dive(
     :param bottom_time: Bottom time [min] (from surface to leaving bottom).
     :param back_gas: Back gas mix. Default is Air (21/0).
     :param deco_gases: List of decompression gas mixes with switch depths set.
-    :param gf: Gradient factors as (low, high) percentages (e.g. (30, 85)).
+    :param gf: Gradient factors as (low, high) percentages in range (0, 100].
+        Example: (30, 85). GF low must be <= GF high.
     :param descent_rate: Descent rate [m/min]. Default 20.
     :param ascent_rate: Ascent rate [m/min]. Default 10.
     :param last_stop_depth: Depth of last deco stop [m]. Default 3.
@@ -141,9 +142,44 @@ def plan_dive(
     if deco_gases is None:
         deco_gases = []
 
-    # Instantiate model
-    gf_low = gf[0] / 100.0 if gf[0] > 1.0 else gf[0]
-    gf_high = gf[1] / 100.0 if gf[1] > 1.0 else gf[1]
+    # --- Input validation ---
+    if not math.isfinite(depth) or depth <= 0:
+        raise ValueError(f"depth must be a positive finite number, got {depth}")
+    if not math.isfinite(bottom_time) or bottom_time <= 0:
+        raise ValueError(f"bottom_time must be a positive finite number, got {bottom_time}")
+    if not math.isfinite(descent_rate) or descent_rate <= 0:
+        raise ValueError(f"descent_rate must be a positive finite number, got {descent_rate}")
+    if not math.isfinite(ascent_rate) or ascent_rate <= 0:
+        raise ValueError(f"ascent_rate must be a positive finite number, got {ascent_rate}")
+    if not math.isfinite(last_stop_depth) or last_stop_depth <= 0:
+        raise ValueError(
+            f"last_stop_depth must be a positive finite number, got {last_stop_depth}"
+        )
+    if not math.isfinite(sac_bottom) or sac_bottom <= 0:
+        raise ValueError(f"sac_bottom must be a positive finite number, got {sac_bottom}")
+    if not math.isfinite(sac_deco) or sac_deco <= 0:
+        raise ValueError(f"sac_deco must be a positive finite number, got {sac_deco}")
+
+    # GF validation — accepted as percentages (0-100] where gf_low <= gf_high
+    gf_low_pct, gf_high_pct = gf
+    if not (0 < gf_low_pct <= 100):
+        raise ValueError(f"gf_low must be in (0, 100], got {gf_low_pct}")
+    if not (0 < gf_high_pct <= 100):
+        raise ValueError(f"gf_high must be in (0, 100], got {gf_high_pct}")
+    if gf_low_pct > gf_high_pct:
+        raise ValueError(f"gf_low must be <= gf_high, got ({gf_low_pct}, {gf_high_pct})")
+    gf_low = gf_low_pct / 100.0
+    gf_high = gf_high_pct / 100.0
+
+    # Validate deco gas switch depths
+    for i, g in enumerate(deco_gases):
+        if g.switch_depth <= 0:
+            raise ValueError(f"deco_gases[{i}] ({g}) must have a positive switch_depth")
+        if g.switch_depth >= depth:
+            raise ValueError(
+                f"deco_gases[{i}] switch_depth ({g.switch_depth}m) must be less than "
+                f"dive depth ({depth}m)"
+            )
 
     if model is None:
         deco_model: ZHL16GF = ZHL16C(gf_low=gf_low, gf_high=gf_high)
