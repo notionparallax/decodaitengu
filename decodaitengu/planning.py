@@ -51,14 +51,14 @@ from .tracking.otu import OTUTracker
 from .types import Cylinder, DecoStop, DiveSummary, Gas, GasUsage, TissueState
 
 
-def _depth_to_pressure(depth: float) -> float:
+def _depth_to_pressure(depth: float, surface_pressure: float) -> float:
     """Convert depth in metres to absolute pressure in bar."""
-    return depth * const.METER_TO_BAR + const.SURFACE_PRESSURE
+    return depth * const.METER_TO_BAR + surface_pressure
 
 
-def _pressure_to_depth(abs_p: float) -> float:
+def _pressure_to_depth(abs_p: float, surface_pressure: float) -> float:
     """Convert absolute pressure to depth in metres."""
-    return (abs_p - const.SURFACE_PRESSURE) / const.METER_TO_BAR
+    return (abs_p - surface_pressure) / const.METER_TO_BAR
 
 
 def _ceil_to_3m(depth: float) -> float:
@@ -126,7 +126,7 @@ class _DiveState:
     def snapshot(self, model: ZHL16GF, depth: float, gf: float) -> None:
         """Record ceiling and gas pressures at the current runtime."""
         ceiling_p = model.ceiling(self.tissues, gf)
-        ceiling_d = max(0.0, _pressure_to_depth(ceiling_p))
+        ceiling_d = max(0.0, _pressure_to_depth(ceiling_p, self.surface_pressure))
         self.ceiling_profile.append((round(self.runtime, 2), round(depth, 1), round(ceiling_d, 1)))
         if self.track_enabled:
             for lbl, cyl in self.cylinders_by_label.items():
@@ -190,12 +190,15 @@ def _validate_inputs(
                 f"dive depth ({depth}m)"
             )
 
-    # Gate altitude diving until fully implemented (see issue #3)
-    if abs(surface_pressure - const.SURFACE_PRESSURE) > 1e-6:
-        raise NotImplementedError(
-            f"Altitude diving is not yet supported. surface_pressure must be "
-            f"{const.SURFACE_PRESSURE} bar (sea level). "
-            f"Got {surface_pressure} bar. See issue #3 for progress."
+    # Validate surface pressure (reasonable range for altitude diving)
+    if not math.isfinite(surface_pressure) or surface_pressure <= 0:
+        raise ValueError(
+            f"surface_pressure must be a positive finite number, got {surface_pressure}"
+        )
+    if surface_pressure < 0.5 or surface_pressure > 1.1:
+        raise ValueError(
+            f"surface_pressure must be between 0.5 and 1.1 bar, got {surface_pressure}. "
+            f"(0.5 bar ≈ 5500m altitude, 1.1 bar is above sea level)"
         )
 
     return gf_low_pct / 100.0, gf_high_pct / 100.0
@@ -243,11 +246,14 @@ def _descend(
 
     for stop_depth, stop_time in ordered_stops:
         seg_time = (stop_depth - prev_depth) / descent_rate
-        seg_start_p = _depth_to_pressure(prev_depth)
+        seg_start_p = _depth_to_pressure(prev_depth, state.surface_pressure)
         state.tissues = model.load(
             state.tissues, seg_start_p, seg_time, back_gas, descent_rate_bar
         )
-        avg_seg_p = (_depth_to_pressure(prev_depth) + _depth_to_pressure(stop_depth)) / 2.0
+        avg_seg_p = (
+            _depth_to_pressure(prev_depth, state.surface_pressure)
+            + _depth_to_pressure(stop_depth, state.surface_pressure)
+        ) / 2.0
         po2_seg = (back_gas.o2 / 100.0) * avg_seg_p
         state.cns_tracker.update(po2_seg, seg_time)
         state.otu_tracker.update(po2_seg, seg_time)
@@ -259,7 +265,7 @@ def _descend(
         state.profile.append((round(state.runtime, 2), stop_depth))
 
         # Stop at this depth
-        stop_p = _depth_to_pressure(stop_depth)
+        stop_p = _depth_to_pressure(stop_depth, state.surface_pressure)
         po2_stop = (back_gas.o2 / 100.0) * stop_p
         state.tissues = model.load(state.tissues, stop_p, stop_time, back_gas, 0.0)
         state.cns_tracker.update(po2_stop, stop_time)
@@ -274,11 +280,14 @@ def _descend(
 
     # Final descent segment to target depth
     final_seg_time = (depth - prev_depth) / descent_rate
-    seg_start_p = _depth_to_pressure(prev_depth)
+    seg_start_p = _depth_to_pressure(prev_depth, state.surface_pressure)
     state.tissues = model.load(
         state.tissues, seg_start_p, final_seg_time, back_gas, descent_rate_bar
     )
-    avg_descent_pressure = (_depth_to_pressure(prev_depth) + _depth_to_pressure(depth)) / 2.0
+    avg_descent_pressure = (
+        _depth_to_pressure(prev_depth, state.surface_pressure)
+        + _depth_to_pressure(depth, state.surface_pressure)
+    ) / 2.0
     po2_descent = (back_gas.o2 / 100.0) * avg_descent_pressure
     state.cns_tracker.update(po2_descent, final_seg_time)
     state.otu_tracker.update(po2_descent, final_seg_time)
@@ -301,7 +310,7 @@ def _bottom(
     sac_bottom: float,
 ) -> None:
     """Execute the bottom phase. Modifies state in place."""
-    abs_p_bottom = _depth_to_pressure(depth)
+    abs_p_bottom = _depth_to_pressure(depth, state.surface_pressure)
     po2_bottom = (back_gas.o2 / 100.0) * abs_p_bottom
 
     remaining = bottom_duration
@@ -337,13 +346,14 @@ def _ascend_with_deco(
 
     Returns (stops, total_deco_time, ndl, stop_runtimes, back_gas_ascent_litres).
     """
-    abs_p_bottom = _depth_to_pressure(depth)
+    sp = state.surface_pressure
+    abs_p_bottom = _depth_to_pressure(depth, sp)
     ascent_rate_bar = ascent_rate * const.METER_TO_BAR
     all_gases = [back_gas] + sorted(deco_gases, key=lambda g: g.switch_depth, reverse=True)
     current_gas = back_gas
 
     # Determine ceiling
-    ceiling_depth = _pressure_to_depth(model.ceiling(state.tissues, gf_low))
+    ceiling_depth = _pressure_to_depth(model.ceiling(state.tissues, gf_low), sp)
     first_stop_depth = max(last_stop_depth, _ceil_to_3m(ceiling_depth))
 
     # Check if NDL dive
@@ -353,7 +363,7 @@ def _ascend_with_deco(
     )
     surface_ceiling = model.ceiling(test_tissues, gf_high)
 
-    if surface_ceiling <= const.SURFACE_PRESSURE:
+    if surface_ceiling <= sp:
         # NDL dive - compute remaining no-deco time via binary search
         ndl_lo, ndl_hi = 0.0, 600.0
         for _ in range(30):
@@ -364,7 +374,7 @@ def _ascend_with_deco(
                 t_tissues, abs_p_bottom, t_ascent_time, current_gas, -ascent_rate_bar
             )
             t_ceiling = model.ceiling(t_tissues_asc, gf_high)
-            if t_ceiling <= const.SURFACE_PRESSURE:
+            if t_ceiling <= sp:
                 ndl_lo = ndl_mid
             else:
                 ndl_hi = ndl_mid
@@ -413,7 +423,7 @@ def _ascend_with_deco(
     # Process each 3m stop
     stop_depth = first_stop_depth
     while stop_depth >= last_stop_depth:
-        abs_p_stop = _depth_to_pressure(stop_depth)
+        abs_p_stop = _depth_to_pressure(stop_depth, sp)
         if first_stop_depth > 0:
             current_gf = (
                 gf_low + (gf_high - gf_low) * (first_stop_depth - stop_depth) / first_stop_depth
@@ -454,14 +464,14 @@ def _ascend_with_deco(
                     state.tissues, abs_p_stop, ascent_seg_time, current_gas, -ascent_rate_bar
                 )
                 test_ceiling = model.ceiling(test_tissues_stop, gf_high)
-                if test_ceiling <= const.SURFACE_PRESSURE:
+                if test_ceiling <= sp:
                     break
             else:
                 ascent_seg_time = 3.0 / ascent_rate
                 test_tissues_stop = model.load(
                     state.tissues, abs_p_stop, ascent_seg_time, current_gas, -ascent_rate_bar
                 )
-                next_stop_p = _depth_to_pressure(stop_depth - 3.0)
+                next_stop_p = _depth_to_pressure(stop_depth - 3.0, sp)
                 test_ceiling = model.ceiling(test_tissues_stop, next_gf)
                 if test_ceiling <= next_stop_p:
                     break
@@ -553,9 +563,9 @@ def plan_dive(
     :param ascent_rate: Ascent rate [m/min]. Default 10.
     :param last_stop_depth: Depth of last deco stop [m]. Default 3.
     :param model: Decompression model class or instance. Default ZHL16C.
-    :param surface_pressure: Surface pressure [bar]. Default 1.01325.
-        NOTE: Altitude diving is not yet implemented. Passing a value other
-        than the default will raise NotImplementedError.
+    :param surface_pressure: Surface pressure [bar]. Default 1.01325 (sea level).
+        For altitude diving, use a lower value (e.g. 0.825 bar ≈ 1800m altitude).
+        Valid range: 0.5–1.1 bar.
     :param cns_method: CNS calculation method. Default EXPONENTIAL.
     :param sac_bottom: Surface-equivalent SAC [L/min] for descent and bottom. Default 20.
     :param sac_deco: Surface-equivalent SAC [L/min] for deco stops and ascent. Default 17.
@@ -588,7 +598,7 @@ def plan_dive(
 
     # --- Build state ---
     state = _DiveState(
-        tissues=deco_model.init(const.SURFACE_PRESSURE),
+        tissues=deco_model.init(surface_pressure),
         cns_tracker=CNSTracker(method=cns_method),
         otu_tracker=OTUTracker(),
         surface_pressure=surface_pressure,
