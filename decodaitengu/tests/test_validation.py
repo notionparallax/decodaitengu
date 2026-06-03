@@ -282,3 +282,14 @@ class TestPlanDiveValidation:
             max_po2=2.0,
         )
         assert result.runtime > 0
+
+    # --- max_deco_time ---
+    def test_max_deco_time_exceeded(self):
+        """Deco time exceeding max_deco_time raises ValueError."""
+        with pytest.raises(ValueError, match="exceeds max_deco_time"):
+            plan_dive(depth=40, bottom_time=30, gf=(30, 85), max_deco_time=5)
+
+    def test_max_deco_time_not_triggered_for_ndl(self):
+        """NDL dive with zero deco doesn't trigger max_deco_time."""
+        result = plan_dive(depth=10, bottom_time=5, max_deco_time=1)
+        assert result.total_deco_time == 0.0

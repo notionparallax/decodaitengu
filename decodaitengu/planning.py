@@ -555,6 +555,7 @@ def plan_dive(
     deco_cylinders: list[Cylinder] | None = None,
     descent_stops: list[tuple[float, float]] | None = None,
     max_po2: float = 1.61,
+    max_deco_time: float = 1440.0,
 ) -> DiveSummary:
     """Plan a dive and return a complete summary.
 
@@ -586,6 +587,8 @@ def plan_dive(
     :param max_po2: Maximum allowed PO2 for deco gas switches [bar]. Default 1.61
         (accommodates standard O2 at 6m in seawater). Set lower for more
         conservative limits or higher for advanced configurations.
+    :param max_deco_time: Maximum total decompression time [min] before raising an error.
+        Default 1440 (24 hours). Acts as a safety limit against runaway calculations.
     :returns: DiveSummary with all dive information.
     """
     if back_gas is None:
@@ -670,6 +673,13 @@ def plan_dive(
         gf_low,
         gf_high,
     )
+
+    if total_deco_time > max_deco_time:
+        raise ValueError(
+            f"Total deco time ({total_deco_time:.0f} min) exceeds "
+            f"max_deco_time ({max_deco_time:.0f} min). "
+            f"Check dive parameters or increase max_deco_time."
+        )
 
     # --- Build gas_usage ---
     gas_usage: dict[str, GasUsage] = {}
