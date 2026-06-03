@@ -263,6 +263,30 @@ class TestPlanDive:
         assert result.total_deco_time > 0
         assert result.max_depth == 60
 
+    def test_gas_selection_picks_richest_eligible(self):
+        """At shallow stops, should switch to the richest O2 gas available."""
+        result = plan_dive(
+            depth=50,
+            bottom_time=25,
+            back_gas=Gas(21, 35),
+            deco_gases=[Gas(50, 0, switch_depth=21), Gas(100, 0, switch_depth=6)],
+            gf=(30, 85),
+        )
+        # The 3m stop should be on 100% O2 (switch_depth=6 allows it at 6m and shallower)
+        # If gas selection was wrong, 3m stop would be on 50% and take longer
+        # Verify that the last stop exists and is reasonable
+        assert result.stops[-1].depth <= 6.0
+        # With 100% O2, the shallow stop should be shorter than without it
+        result_no_o2 = plan_dive(
+            depth=50,
+            bottom_time=25,
+            back_gas=Gas(21, 35),
+            deco_gases=[Gas(50, 0, switch_depth=21)],
+            gf=(30, 85),
+        )
+        # Having pure O2 available should reduce total deco time
+        assert result.total_deco_time < result_no_o2.total_deco_time
+
     def test_cns_and_otu_tracked(self):
         """CNS and OTU should be non-zero for any non-trivial dive."""
         result = plan_dive(depth=30, bottom_time=30, gf=(30, 85))
@@ -397,10 +421,11 @@ class TestSubsurfaceComparison:
     def test_50m_air_ean50_o2(self):
         """50m/19min, air + EAN50@21m + O2@6m, GF 50/70.
 
-        Our model:    15m:1, 12m:3, 9m:3, 6m:4, 3m:12 (total deco 23min)
+        Our model:    15m:1, 12m:3, 9m:3, 6m:4, 3m:7 (total deco 18min)
         Subsurface:   15m:1, 12m:3, 9m:4, 6m:4, 3m:8  (total runtime 45min)
 
         Note: 21m gas-switch stop is added by dive_plan.py, not plan_dive().
+        Note: 3m stop is now on 100%% O2 (richest eligible gas selected correctly).
         """
         result = plan_dive(
             depth=50,
@@ -414,16 +439,17 @@ class TestSubsurfaceComparison:
             descent_rate=self.DESCENT_RATE,
             ascent_rate=self.ASCENT_RATE,
         )
-        self._check_stops(result, {15.0: 1, 12.0: 3, 9.0: 3, 6.0: 4, 3.0: 12})
+        self._check_stops(result, {15.0: 1, 12.0: 3, 9.0: 3, 6.0: 4, 3.0: 7})
 
     def test_60m_tx18_45_ean50_o2(self):
         """60m/14min, Tx18/45 + EAN50@21m + O2@6m, GF 50/70.
 
-        Our model:    18m:1, 15m:1, 12m:2, 9m:3, 6m:5, 3m:12 (total deco 24min)
+        Our model:    18m:1, 15m:1, 12m:2, 9m:3, 6m:5, 3m:8 (total deco 20min)
         Subsurface:   15m:2, 12m:3, 9m:4, 6m:5, 3m:10         (total runtime 45min)
 
         Note: 21m gas-switch stop is added by dive_plan.py, not plan_dive().
         Note: extra 18m stop vs Subsurface — fast He off-gassing controls the ceiling.
+        Note: 3m stop is now on 100%% O2 (richest eligible gas selected correctly).
         """
         result = plan_dive(
             depth=60,
@@ -437,4 +463,4 @@ class TestSubsurfaceComparison:
             descent_rate=self.DESCENT_RATE,
             ascent_rate=self.ASCENT_RATE,
         )
-        self._check_stops(result, {18.0: 1, 15.0: 1, 12.0: 2, 9.0: 3, 6.0: 5, 3.0: 12})
+        self._check_stops(result, {18.0: 1, 15.0: 1, 12.0: 2, 9.0: 3, 6.0: 5, 3.0: 8})
