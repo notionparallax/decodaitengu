@@ -363,10 +363,20 @@ class TestPlanDive:
         assert result.runtime > 0
         assert len(result.gas_usage) > 0
 
-    def test_surface_pressure_altitude_not_implemented(self):
-        """Altitude diving (non-default surface_pressure) should raise NotImplementedError."""
-        with pytest.raises(NotImplementedError, match="Altitude diving is not yet supported"):
-            plan_dive(depth=30, bottom_time=20, surface_pressure=0.825)
+    def test_surface_pressure_altitude_works(self):
+        """Altitude diving (non-default surface_pressure) should work."""
+        result = plan_dive(depth=30, bottom_time=20, surface_pressure=0.825, gf=(30, 85))
+        assert result.runtime > 0
+        # At altitude, tissues start at lower N2 pressure — more conservative
+        sea_level = plan_dive(depth=30, bottom_time=20, surface_pressure=1.01325, gf=(30, 85))
+        assert result.total_deco_time >= sea_level.total_deco_time
+
+    def test_surface_pressure_out_of_range(self):
+        """Surface pressure outside 0.5-1.1 bar should raise ValueError."""
+        with pytest.raises(ValueError, match="surface_pressure must be between"):
+            plan_dive(depth=30, bottom_time=20, surface_pressure=0.3)
+        with pytest.raises(ValueError, match="surface_pressure must be between"):
+            plan_dive(depth=30, bottom_time=20, surface_pressure=1.5)
 
     def test_surface_pressure_default_works(self):
         """Default surface_pressure should work fine."""
@@ -388,6 +398,62 @@ class TestPlanDive:
         # 3m last stop allows shallower stops
         if result_3m.stops:
             assert result_3m.stops[-1].depth >= 3.0
+
+
+class TestAltitudeDiving:
+    """Tests for altitude diving (reduced surface pressure)."""
+
+    def test_altitude_1800m_more_conservative(self):
+        """Diving at 1800m altitude (0.825 bar) should require more deco."""
+        sea_level = plan_dive(depth=30, bottom_time=30, gf=(30, 85))
+        altitude = plan_dive(depth=30, bottom_time=30, gf=(30, 85), surface_pressure=0.825)
+        # At altitude, the reduced ambient pressure means tissues are relatively
+        # more supersaturated — must produce equal or more decompression
+        assert altitude.total_deco_time >= sea_level.total_deco_time
+
+    def test_altitude_tissue_init(self):
+        """Tissue init at altitude should produce lower N2 saturation."""
+        sea_level = plan_dive(depth=20, bottom_time=5, gf=(100, 100))
+        altitude = plan_dive(depth=20, bottom_time=5, gf=(100, 100), surface_pressure=0.825)
+        # At altitude, initial N2 saturation is lower (less ambient N2)
+        # After a short dive, the altitude tissues should still be less loaded
+        sea_n2_total = sum(sea_level.tissues_final.n2_pressures)
+        alt_n2_total = sum(altitude.tissues_final.n2_pressures)
+        assert alt_n2_total < sea_n2_total
+
+    def test_altitude_ndl_shorter(self):
+        """NDL should be shorter at altitude (tissues reach limits faster)."""
+        sea_level = plan_dive(depth=18, bottom_time=30, gf=(100, 100))
+        altitude = plan_dive(depth=18, bottom_time=30, gf=(100, 100), surface_pressure=0.825)
+        # Both should be NDL dives at this depth/time, but altitude NDL should be shorter
+        assert sea_level.ndl is not None
+        assert altitude.ndl is not None
+        assert altitude.ndl <= sea_level.ndl
+
+    def test_altitude_various_pressures(self):
+        """Multiple altitude levels should produce monotonically more deco."""
+        pressures = [1.01325, 0.9, 0.825, 0.7, 0.6]
+        deco_times = []
+        for sp in pressures:
+            result = plan_dive(depth=30, bottom_time=30, gf=(30, 85), surface_pressure=sp)
+            deco_times.append(result.total_deco_time)
+        # Each lower pressure should produce >= deco time as the one above
+        for i in range(1, len(deco_times)):
+            assert deco_times[i] >= deco_times[i - 1], (
+                f"Pressure {pressures[i]} bar produced less deco ({deco_times[i]}) "
+                f"than {pressures[i - 1]} bar ({deco_times[i - 1]})"
+            )
+
+    def test_altitude_max_depth_unchanged(self):
+        """max_depth should still match requested depth regardless of altitude."""
+        result = plan_dive(depth=40, bottom_time=20, gf=(30, 85), surface_pressure=0.7)
+        assert result.max_depth == pytest.approx(40.0)
+
+    def test_altitude_cns_otu_tracked(self):
+        """CNS and OTU should still be tracked at altitude."""
+        result = plan_dive(depth=30, bottom_time=30, gf=(30, 85), surface_pressure=0.825)
+        assert result.cns_percent >= 0
+        assert result.otu >= 0
 
 
 class TestGasDensity:
