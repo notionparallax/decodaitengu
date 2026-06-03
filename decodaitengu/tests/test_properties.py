@@ -53,10 +53,12 @@ class TestMonotonicity:
         """Lower GF high (more conservative surfacing) should produce >= deco time."""
         assume(gf[1] > 20)  # Need room to make it more conservative
         assume(bottom_time > depth / 20.0 + 1)
-        liberal = plan_dive(depth=depth, bottom_time=bottom_time, gf=gf)
+        liberal = plan_dive(depth=depth, bottom_time=bottom_time, gf=gf, max_deco_time=99999)
         conservative_gf = (gf[0], gf[1] - 10)
         assume(conservative_gf[0] <= conservative_gf[1])  # GF_low must be <= GF_high
-        conservative = plan_dive(depth=depth, bottom_time=bottom_time, gf=conservative_gf)
+        conservative = plan_dive(
+            depth=depth, bottom_time=bottom_time, gf=conservative_gf, max_deco_time=99999
+        )
         assert conservative.total_deco_time >= liberal.total_deco_time - 0.01, (
             f"Conservative GF {conservative_gf} produced less deco "
             f"({conservative.total_deco_time}) than liberal {gf} ({liberal.total_deco_time})"
@@ -137,7 +139,7 @@ class TestSurfacing:
     ) -> None:
         """Runtime must always be positive."""
         assume(bottom_time > depth / 20.0 + 1)
-        result = plan_dive(depth=depth, bottom_time=bottom_time, gf=gf)
+        result = plan_dive(depth=depth, bottom_time=bottom_time, gf=gf, max_deco_time=99999)
         assert result.runtime > 0
 
     @given(
@@ -151,7 +153,7 @@ class TestSurfacing:
     ) -> None:
         """Runtime must be at least bottom time (includes ascent)."""
         assume(bottom_time > depth / 20.0 + 1)
-        result = plan_dive(depth=depth, bottom_time=bottom_time, gf=gf)
+        result = plan_dive(depth=depth, bottom_time=bottom_time, gf=gf, max_deco_time=99999)
         assert result.runtime >= bottom_time - 0.1
 
     @given(
@@ -165,7 +167,7 @@ class TestSurfacing:
     ) -> None:
         """CNS must be non-negative."""
         assume(bottom_time > depth / 20.0 + 1)
-        result = plan_dive(depth=depth, bottom_time=bottom_time, gf=gf)
+        result = plan_dive(depth=depth, bottom_time=bottom_time, gf=gf, max_deco_time=99999)
         assert result.cns_percent >= 0.0
 
     @given(
@@ -179,7 +181,7 @@ class TestSurfacing:
     ) -> None:
         """OTU must be non-negative."""
         assume(bottom_time > depth / 20.0 + 1)
-        result = plan_dive(depth=depth, bottom_time=bottom_time, gf=gf)
+        result = plan_dive(depth=depth, bottom_time=bottom_time, gf=gf, max_deco_time=99999)
         assert result.otu >= 0.0
 
     @given(
@@ -205,7 +207,7 @@ class TestSurfacing:
     ) -> None:
         """All deco stops must be at multiples of 3m."""
         assume(bottom_time > depth / 20.0 + 1)
-        result = plan_dive(depth=depth, bottom_time=bottom_time, gf=gf)
+        result = plan_dive(depth=depth, bottom_time=bottom_time, gf=gf, max_deco_time=99999)
         for stop in result.stops:
             assert stop.depth % 3.0 == pytest.approx(0.0, abs=0.01), (
                 f"Stop at {stop.depth}m is not a multiple of 3"
@@ -222,5 +224,5 @@ class TestSurfacing:
     ) -> None:
         """max_depth should equal the requested depth."""
         assume(bottom_time > depth / 20.0 + 1)
-        result = plan_dive(depth=depth, bottom_time=bottom_time, gf=gf)
+        result = plan_dive(depth=depth, bottom_time=bottom_time, gf=gf, max_deco_time=99999)
         assert result.max_depth == pytest.approx(depth)
