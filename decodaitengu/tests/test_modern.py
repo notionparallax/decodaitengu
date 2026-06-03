@@ -363,6 +363,16 @@ class TestPlanDive:
         assert result.runtime > 0
         assert len(result.gas_usage) > 0
 
+    def test_surface_pressure_altitude_not_implemented(self):
+        """Altitude diving (non-default surface_pressure) should raise NotImplementedError."""
+        with pytest.raises(NotImplementedError, match="Altitude diving is not yet supported"):
+            plan_dive(depth=30, bottom_time=20, surface_pressure=0.825)
+
+    def test_surface_pressure_default_works(self):
+        """Default surface_pressure should work fine."""
+        result = plan_dive(depth=20, bottom_time=15, gf=(30, 85))
+        assert result.runtime > 0
+
     def test_model_selection_zhl16b(self):
         """Should work with ZHL16B model."""
         result = plan_dive(depth=35, bottom_time=40, model=ZHL16B, gf=(30, 85))
