@@ -41,6 +41,7 @@ Example::
 """
 
 import math
+from dataclasses import dataclass, field
 
 from . import const
 from .models import ZHL16C
@@ -90,6 +91,432 @@ def _gas_density(gas: Gas, abs_p: float) -> float:
     f_n2 = gas.n2 / 100.0
     mw_mix = f_o2 * _MW_O2 + f_n2 * _MW_N2 + f_he * _MW_HE
     return (mw_mix * abs_p) / (_R * _BODY_TEMP_K)
+
+
+def _gas_label(g: Gas) -> str:
+    """Return a human-readable label for a gas mix."""
+    return g.label if g.label else f"Tx{g.o2:.0f}/{g.he:.0f}"
+
+
+@dataclass
+class _DiveState:
+    """Mutable state threaded through dive phases."""
+
+    tissues: TissueState
+    runtime: float = 0.0
+    cns_tracker: CNSTracker = field(default_factory=CNSTracker)
+    otu_tracker: OTUTracker = field(default_factory=OTUTracker)
+    gas_consumed: dict[str, float] = field(default_factory=dict)
+    profile: list[tuple[float, float]] = field(default_factory=lambda: [(0.0, 0.0)])
+    ceiling_profile: list[tuple[float, float, float]] = field(
+        default_factory=lambda: [(0.0, 0.0, 0.0)]
+    )
+    gas_pressure_profile: dict[str, list[tuple[float, float]]] = field(default_factory=dict)
+    cylinders_by_label: dict[str, Cylinder] = field(default_factory=dict)
+    track_enabled: bool = False
+    surface_pressure: float = const.SURFACE_PRESSURE
+    max_gas_density: float = 0.0
+
+    def track_gas(self, g: Gas, duration: float, avg_abs_p: float, sac: float) -> None:
+        """Record gas consumed during a segment."""
+        litres = sac * duration * (avg_abs_p / self.surface_pressure)
+        lbl = _gas_label(g)
+        self.gas_consumed[lbl] = self.gas_consumed.get(lbl, 0.0) + litres
+
+    def snapshot(self, model: ZHL16GF, depth: float, gf: float) -> None:
+        """Record ceiling and gas pressures at the current runtime."""
+        ceiling_p = model.ceiling(self.tissues, gf)
+        ceiling_d = max(0.0, _pressure_to_depth(ceiling_p))
+        self.ceiling_profile.append((round(self.runtime, 2), round(depth, 1), round(ceiling_d, 1)))
+        if self.track_enabled:
+            for lbl, cyl in self.cylinders_by_label.items():
+                consumed = self.gas_consumed.get(lbl, 0.0)
+                remaining = max(0.0, cyl.fill_bar - consumed / cyl.volume_litres)
+                self.gas_pressure_profile[lbl].append(
+                    (round(self.runtime, 2), round(remaining, 1))
+                )
+
+
+def _validate_inputs(
+    depth: float,
+    bottom_time: float,
+    descent_rate: float,
+    ascent_rate: float,
+    last_stop_depth: float,
+    sac_bottom: float,
+    sac_deco: float,
+    gf: tuple[float, float],
+    deco_gases: list[Gas],
+    surface_pressure: float,
+) -> tuple[float, float]:
+    """Validate all plan_dive inputs and return (gf_low, gf_high) as fractions.
+
+    :raises ValueError: If any input is invalid.
+    :raises NotImplementedError: If altitude diving is attempted.
+    """
+    if not math.isfinite(depth) or depth <= 0:
+        raise ValueError(f"depth must be a positive finite number, got {depth}")
+    if not math.isfinite(bottom_time) or bottom_time <= 0:
+        raise ValueError(f"bottom_time must be a positive finite number, got {bottom_time}")
+    if not math.isfinite(descent_rate) or descent_rate <= 0:
+        raise ValueError(f"descent_rate must be a positive finite number, got {descent_rate}")
+    if not math.isfinite(ascent_rate) or ascent_rate <= 0:
+        raise ValueError(f"ascent_rate must be a positive finite number, got {ascent_rate}")
+    if not math.isfinite(last_stop_depth) or last_stop_depth <= 0:
+        raise ValueError(
+            f"last_stop_depth must be a positive finite number, got {last_stop_depth}"
+        )
+    if not math.isfinite(sac_bottom) or sac_bottom <= 0:
+        raise ValueError(f"sac_bottom must be a positive finite number, got {sac_bottom}")
+    if not math.isfinite(sac_deco) or sac_deco <= 0:
+        raise ValueError(f"sac_deco must be a positive finite number, got {sac_deco}")
+
+    # GF validation — accepted as percentages (0-100] where gf_low <= gf_high
+    gf_low_pct, gf_high_pct = gf
+    if not (0 < gf_low_pct <= 100):
+        raise ValueError(f"gf_low must be in (0, 100], got {gf_low_pct}")
+    if not (0 < gf_high_pct <= 100):
+        raise ValueError(f"gf_high must be in (0, 100], got {gf_high_pct}")
+    if gf_low_pct > gf_high_pct:
+        raise ValueError(f"gf_low must be <= gf_high, got ({gf_low_pct}, {gf_high_pct})")
+
+    # Validate deco gas switch depths
+    for i, g in enumerate(deco_gases):
+        if g.switch_depth <= 0:
+            raise ValueError(f"deco_gases[{i}] ({g}) must have a positive switch_depth")
+        if g.switch_depth >= depth:
+            raise ValueError(
+                f"deco_gases[{i}] switch_depth ({g.switch_depth}m) must be less than "
+                f"dive depth ({depth}m)"
+            )
+
+    # Gate altitude diving until fully implemented (see issue #3)
+    if abs(surface_pressure - const.SURFACE_PRESSURE) > 1e-6:
+        raise NotImplementedError(
+            f"Altitude diving is not yet supported. surface_pressure must be "
+            f"{const.SURFACE_PRESSURE} bar (sea level). "
+            f"Got {surface_pressure} bar. See issue #3 for progress."
+        )
+
+    return gf_low_pct / 100.0, gf_high_pct / 100.0
+
+
+def _resolve_model(
+    model: type[ZHL16GF] | ZHL16GF | None, gf_low: float, gf_high: float
+) -> ZHL16GF:
+    """Instantiate or configure the decompression model."""
+    if model is None:
+        return ZHL16C(gf_low=gf_low, gf_high=gf_high)
+    elif isinstance(model, type):
+        return model(gf_low=gf_low, gf_high=gf_high)
+    else:
+        model.gf_low = gf_low
+        model.gf_high = gf_high
+        return model
+
+
+def _descend(
+    state: _DiveState,
+    model: ZHL16GF,
+    depth: float,
+    descent_rate: float,
+    back_gas: Gas,
+    sac_bottom: float,
+    descent_stops: list[tuple[float, float]] | None,
+) -> float:
+    """Execute the descent phase. Returns total descent time.
+
+    Modifies state in place (tissues, trackers, profile, gas consumption).
+    """
+    descent_rate_bar = descent_rate * const.METER_TO_BAR
+
+    # Build ordered list of descent waypoints
+    ordered_stops: list[tuple[float, float]] = []
+    if descent_stops:
+        ordered_stops = sorted(
+            [(float(d), float(t)) for d, t in descent_stops if 0 < d < depth],
+            key=lambda x: x[0],
+        )
+
+    prev_depth = 0.0
+    descent_time = 0.0
+
+    for stop_depth, stop_time in ordered_stops:
+        seg_time = (stop_depth - prev_depth) / descent_rate
+        seg_start_p = _depth_to_pressure(prev_depth)
+        state.tissues = model.load(
+            state.tissues, seg_start_p, seg_time, back_gas, descent_rate_bar
+        )
+        avg_seg_p = (_depth_to_pressure(prev_depth) + _depth_to_pressure(stop_depth)) / 2.0
+        po2_seg = (back_gas.o2 / 100.0) * avg_seg_p
+        state.cns_tracker.update(po2_seg, seg_time)
+        state.otu_tracker.update(po2_seg, seg_time)
+        if state.track_enabled:
+            state.track_gas(back_gas, seg_time, avg_seg_p, sac_bottom)
+        state.runtime += seg_time
+        descent_time += seg_time
+        state.snapshot(model, stop_depth, model.gf_low)
+        state.profile.append((round(state.runtime, 2), stop_depth))
+
+        # Stop at this depth
+        stop_p = _depth_to_pressure(stop_depth)
+        po2_stop = (back_gas.o2 / 100.0) * stop_p
+        state.tissues = model.load(state.tissues, stop_p, stop_time, back_gas, 0.0)
+        state.cns_tracker.update(po2_stop, stop_time)
+        state.otu_tracker.update(po2_stop, stop_time)
+        if state.track_enabled:
+            state.track_gas(back_gas, stop_time, stop_p, sac_bottom)
+        state.runtime += stop_time
+        descent_time += stop_time
+        state.snapshot(model, stop_depth, model.gf_low)
+        state.profile.append((round(state.runtime, 2), stop_depth))
+        prev_depth = stop_depth
+
+    # Final descent segment to target depth
+    final_seg_time = (depth - prev_depth) / descent_rate
+    seg_start_p = _depth_to_pressure(prev_depth)
+    state.tissues = model.load(
+        state.tissues, seg_start_p, final_seg_time, back_gas, descent_rate_bar
+    )
+    avg_descent_pressure = (_depth_to_pressure(prev_depth) + _depth_to_pressure(depth)) / 2.0
+    po2_descent = (back_gas.o2 / 100.0) * avg_descent_pressure
+    state.cns_tracker.update(po2_descent, final_seg_time)
+    state.otu_tracker.update(po2_descent, final_seg_time)
+    if state.track_enabled:
+        state.track_gas(back_gas, final_seg_time, avg_descent_pressure, sac_bottom)
+    state.runtime += final_seg_time
+    descent_time += final_seg_time
+    state.snapshot(model, depth, model.gf_low)
+    state.profile.append((round(state.runtime, 2), depth))
+
+    return descent_time
+
+
+def _bottom(
+    state: _DiveState,
+    model: ZHL16GF,
+    depth: float,
+    bottom_duration: float,
+    back_gas: Gas,
+    sac_bottom: float,
+) -> None:
+    """Execute the bottom phase. Modifies state in place."""
+    abs_p_bottom = _depth_to_pressure(depth)
+    po2_bottom = (back_gas.o2 / 100.0) * abs_p_bottom
+
+    remaining = bottom_duration
+    while remaining > 0:
+        step = min(1.0, remaining)
+        state.tissues = model.load(state.tissues, abs_p_bottom, step, back_gas, 0.0)
+        state.cns_tracker.update(po2_bottom, step)
+        state.otu_tracker.update(po2_bottom, step)
+        if state.track_enabled:
+            state.track_gas(back_gas, step, abs_p_bottom, sac_bottom)
+        state.runtime += step
+        remaining -= step
+        state.snapshot(model, depth, model.gf_low)
+
+    state.profile.append((round(state.runtime, 2), depth))
+    state.max_gas_density = max(state.max_gas_density, _gas_density(back_gas, abs_p_bottom))
+
+
+def _ascend_with_deco(
+    state: _DiveState,
+    model: ZHL16GF,
+    depth: float,
+    back_gas: Gas,
+    deco_gases: list[Gas],
+    ascent_rate: float,
+    last_stop_depth: float,
+    sac_bottom: float,
+    sac_deco: float,
+    gf_low: float,
+    gf_high: float,
+) -> tuple[list[DecoStop], float, float | None, dict[float, float], float]:
+    """Execute ascent and deco phases.
+
+    Returns (stops, total_deco_time, ndl, stop_runtimes, back_gas_ascent_litres).
+    """
+    abs_p_bottom = _depth_to_pressure(depth)
+    ascent_rate_bar = ascent_rate * const.METER_TO_BAR
+    all_gases = [back_gas] + sorted(deco_gases, key=lambda g: g.switch_depth, reverse=True)
+    current_gas = back_gas
+
+    # Determine ceiling
+    ceiling_depth = _pressure_to_depth(model.ceiling(state.tissues, gf_low))
+    first_stop_depth = max(last_stop_depth, _ceil_to_3m(ceiling_depth))
+
+    # Check if NDL dive
+    test_ascent_time = depth / ascent_rate
+    test_tissues = model.load(
+        state.tissues, abs_p_bottom, test_ascent_time, current_gas, -ascent_rate_bar
+    )
+    surface_ceiling = model.ceiling(test_tissues, gf_high)
+
+    if surface_ceiling <= const.SURFACE_PRESSURE:
+        # NDL dive - compute remaining no-deco time via binary search
+        ndl_lo, ndl_hi = 0.0, 600.0
+        for _ in range(30):
+            ndl_mid = (ndl_lo + ndl_hi) / 2.0
+            t_tissues = model.load(state.tissues, abs_p_bottom, ndl_mid, current_gas, 0.0)
+            t_ascent_time = depth / ascent_rate
+            t_tissues_asc = model.load(
+                t_tissues, abs_p_bottom, t_ascent_time, current_gas, -ascent_rate_bar
+            )
+            t_ceiling = model.ceiling(t_tissues_asc, gf_high)
+            if t_ceiling <= const.SURFACE_PRESSURE:
+                ndl_lo = ndl_mid
+            else:
+                ndl_hi = ndl_mid
+        computed_ndl = round(ndl_lo, 0)
+
+        # Ascend directly
+        ascent_time = depth / ascent_rate
+        avg_ascent_p = abs_p_bottom - (depth * const.METER_TO_BAR / 2.0)
+        po2_ascent = (current_gas.o2 / 100.0) * avg_ascent_p
+        state.cns_tracker.update(po2_ascent, ascent_time)
+        state.otu_tracker.update(po2_ascent, ascent_time)
+        if state.track_enabled:
+            state.track_gas(current_gas, ascent_time, avg_ascent_p, sac_deco)
+        state.tissues = test_tissues
+        state.runtime += ascent_time
+        state.snapshot(model, 0.0, gf_high)
+        state.profile.append((round(state.runtime, 2), 0.0))
+
+        return [], 0.0, computed_ndl, {}, 0.0
+
+    # Deco dive - ascend to first stop
+    total_deco_time = 0.0
+    stops: list[DecoStop] = []
+    stop_runtimes: dict[float, float] = {}
+    back_gas_ascent_litres = 0.0
+    on_back_gas = True
+
+    # Free ascent to first stop
+    ascent_to_first = depth - first_stop_depth
+    if ascent_to_first > 0:
+        free_ascent_time = ascent_to_first / ascent_rate
+        state.tissues = model.load(
+            state.tissues, abs_p_bottom, free_ascent_time, current_gas, -ascent_rate_bar
+        )
+        avg_p = abs_p_bottom - (ascent_to_first * const.METER_TO_BAR / 2.0)
+        po2 = (current_gas.o2 / 100.0) * avg_p
+        state.cns_tracker.update(po2, free_ascent_time)
+        state.otu_tracker.update(po2, free_ascent_time)
+        if state.track_enabled:
+            state.track_gas(current_gas, free_ascent_time, avg_p, sac_deco)
+        back_gas_ascent_litres += sac_bottom * free_ascent_time * (avg_p / state.surface_pressure)
+        state.runtime += free_ascent_time
+    state.snapshot(model, first_stop_depth, gf_low)
+    state.profile.append((round(state.runtime, 2), first_stop_depth))
+
+    # Process each 3m stop
+    stop_depth = first_stop_depth
+    while stop_depth >= last_stop_depth:
+        abs_p_stop = _depth_to_pressure(stop_depth)
+        if first_stop_depth > 0:
+            current_gf = (
+                gf_low + (gf_high - gf_low) * (first_stop_depth - stop_depth) / first_stop_depth
+            )
+        else:
+            current_gf = gf_high
+        current_gf = min(current_gf, gf_high)
+
+        next_stop_depth = stop_depth - 3.0
+        if first_stop_depth > 0 and next_stop_depth > 0:
+            next_gf = (
+                gf_low
+                + (gf_high - gf_low) * (first_stop_depth - next_stop_depth) / first_stop_depth
+            )
+        else:
+            next_gf = gf_high
+        next_gf = min(next_gf, gf_high)
+
+        # Gas switch — pick richest O2 eligible gas
+        best_gas = current_gas
+        for g in all_gases[1:]:
+            if g.switch_depth >= stop_depth and g.o2 > best_gas.o2:
+                best_gas = g
+        if best_gas != current_gas:
+            current_gas = best_gas
+
+        if current_gas != back_gas and on_back_gas:
+            on_back_gas = False
+
+        state.max_gas_density = max(state.max_gas_density, _gas_density(current_gas, abs_p_stop))
+
+        # Wait at stop until we can ascend
+        stop_time = 0.0
+        while True:
+            if stop_depth <= last_stop_depth:
+                ascent_seg_time = stop_depth / ascent_rate
+                test_tissues_stop = model.load(
+                    state.tissues, abs_p_stop, ascent_seg_time, current_gas, -ascent_rate_bar
+                )
+                test_ceiling = model.ceiling(test_tissues_stop, gf_high)
+                if test_ceiling <= const.SURFACE_PRESSURE:
+                    break
+            else:
+                ascent_seg_time = 3.0 / ascent_rate
+                test_tissues_stop = model.load(
+                    state.tissues, abs_p_stop, ascent_seg_time, current_gas, -ascent_rate_bar
+                )
+                next_stop_p = _depth_to_pressure(stop_depth - 3.0)
+                test_ceiling = model.ceiling(test_tissues_stop, next_gf)
+                if test_ceiling <= next_stop_p:
+                    break
+
+            # Stay 1 more minute
+            state.tissues = model.load(state.tissues, abs_p_stop, 1.0, current_gas, 0.0)
+            po2 = (current_gas.o2 / 100.0) * abs_p_stop
+            state.cns_tracker.update(po2, 1.0)
+            state.otu_tracker.update(po2, 1.0)
+            if state.track_enabled:
+                state.track_gas(current_gas, 1.0, abs_p_stop, sac_deco)
+            if on_back_gas:
+                back_gas_ascent_litres += sac_bottom * 1.0 * (abs_p_stop / state.surface_pressure)
+            stop_time += 1.0
+            state.runtime += 1.0
+
+        if stop_time > 0:
+            stops.append(DecoStop(depth=stop_depth, time=stop_time))
+            total_deco_time += stop_time
+            stop_runtimes[stop_depth] = round(state.runtime, 2)
+        state.snapshot(model, stop_depth, current_gf)
+        state.profile.append((round(state.runtime, 2), stop_depth))
+
+        # Ascend 3m
+        if stop_depth <= last_stop_depth:
+            ascent_time = stop_depth / ascent_rate
+            state.tissues = model.load(
+                state.tissues, abs_p_stop, ascent_time, current_gas, -ascent_rate_bar
+            )
+            avg_p = abs_p_stop - (stop_depth * const.METER_TO_BAR / 2.0)
+            next_profile_depth = 0.0
+        else:
+            ascent_time = 3.0 / ascent_rate
+            state.tissues = model.load(
+                state.tissues, abs_p_stop, ascent_time, current_gas, -ascent_rate_bar
+            )
+            avg_p = abs_p_stop - (3.0 * const.METER_TO_BAR / 2.0)
+            next_profile_depth = stop_depth - 3.0
+
+        po2 = (current_gas.o2 / 100.0) * avg_p
+        state.cns_tracker.update(po2, ascent_time)
+        state.otu_tracker.update(po2, ascent_time)
+        if state.track_enabled:
+            state.track_gas(current_gas, ascent_time, avg_p, sac_deco)
+        if on_back_gas:
+            back_gas_ascent_litres += sac_bottom * ascent_time * (avg_p / state.surface_pressure)
+        state.runtime += ascent_time
+        state.snapshot(model, next_profile_depth, next_gf)
+        state.profile.append((round(state.runtime, 2), next_profile_depth))
+
+        if stop_depth <= last_stop_depth:
+            break
+        stop_depth -= 3.0
+
+    return stops, total_deco_time, None, stop_runtimes, back_gas_ascent_litres
 
 
 def plan_dive(
@@ -144,97 +571,39 @@ def plan_dive(
     if deco_gases is None:
         deco_gases = []
 
-    # --- Input validation ---
-    if not math.isfinite(depth) or depth <= 0:
-        raise ValueError(f"depth must be a positive finite number, got {depth}")
-    if not math.isfinite(bottom_time) or bottom_time <= 0:
-        raise ValueError(f"bottom_time must be a positive finite number, got {bottom_time}")
-    if not math.isfinite(descent_rate) or descent_rate <= 0:
-        raise ValueError(f"descent_rate must be a positive finite number, got {descent_rate}")
-    if not math.isfinite(ascent_rate) or ascent_rate <= 0:
-        raise ValueError(f"ascent_rate must be a positive finite number, got {ascent_rate}")
-    if not math.isfinite(last_stop_depth) or last_stop_depth <= 0:
-        raise ValueError(
-            f"last_stop_depth must be a positive finite number, got {last_stop_depth}"
-        )
-    if not math.isfinite(sac_bottom) or sac_bottom <= 0:
-        raise ValueError(f"sac_bottom must be a positive finite number, got {sac_bottom}")
-    if not math.isfinite(sac_deco) or sac_deco <= 0:
-        raise ValueError(f"sac_deco must be a positive finite number, got {sac_deco}")
+    # --- Validate and resolve ---
+    gf_low, gf_high = _validate_inputs(
+        depth,
+        bottom_time,
+        descent_rate,
+        ascent_rate,
+        last_stop_depth,
+        sac_bottom,
+        sac_deco,
+        gf,
+        deco_gases,
+        surface_pressure,
+    )
+    deco_model = _resolve_model(model, gf_low, gf_high)
 
-    # GF validation — accepted as percentages (0-100] where gf_low <= gf_high
-    gf_low_pct, gf_high_pct = gf
-    if not (0 < gf_low_pct <= 100):
-        raise ValueError(f"gf_low must be in (0, 100], got {gf_low_pct}")
-    if not (0 < gf_high_pct <= 100):
-        raise ValueError(f"gf_high must be in (0, 100], got {gf_high_pct}")
-    if gf_low_pct > gf_high_pct:
-        raise ValueError(f"gf_low must be <= gf_high, got ({gf_low_pct}, {gf_high_pct})")
-    gf_low = gf_low_pct / 100.0
-    gf_high = gf_high_pct / 100.0
+    # --- Build state ---
+    state = _DiveState(
+        tissues=deco_model.init(const.SURFACE_PRESSURE),
+        cns_tracker=CNSTracker(method=cns_method),
+        otu_tracker=OTUTracker(),
+        surface_pressure=surface_pressure,
+        track_enabled=back_cylinder is not None or deco_cylinders is not None,
+    )
 
-    # Validate deco gas switch depths
-    for i, g in enumerate(deco_gases):
-        if g.switch_depth <= 0:
-            raise ValueError(f"deco_gases[{i}] ({g}) must have a positive switch_depth")
-        if g.switch_depth >= depth:
-            raise ValueError(
-                f"deco_gases[{i}] switch_depth ({g.switch_depth}m) must be less than "
-                f"dive depth ({depth}m)"
-            )
-
-    # Gate altitude diving until fully implemented (see issue #3)
-    if abs(surface_pressure - const.SURFACE_PRESSURE) > 1e-6:
-        raise NotImplementedError(
-            f"Altitude diving is not yet supported. surface_pressure must be "
-            f"{const.SURFACE_PRESSURE} bar (sea level). "
-            f"Got {surface_pressure} bar. See issue #3 for progress."
-        )
-
-    if model is None:
-        deco_model: ZHL16GF = ZHL16C(gf_low=gf_low, gf_high=gf_high)
-    elif isinstance(model, type):
-        deco_model = model(gf_low=gf_low, gf_high=gf_high)
-    else:
-        deco_model = model
-        deco_model.gf_low = gf_low
-        deco_model.gf_high = gf_high
-
-    # Trackers
-    cns_tracker = CNSTracker(method=cns_method)
-    otu_tracker = OTUTracker()
-
-    # Initialise tissues
-    tissues = deco_model.init(const.SURFACE_PRESSURE)
-
-    # Gas consumption tracking (only if cylinders provided)
-    _gas_consumed: dict[str, float] = {}
-    _track_enabled = back_cylinder is not None or deco_cylinders is not None
-
-    def _gas_label(g: Gas) -> str:
-        return g.label if g.label else f"Tx{g.o2:.0f}/{g.he:.0f}"
-
-    def _track_gas(g: Gas, duration: float, avg_abs_p: float, sac: float) -> None:
-        litres = sac * duration * (avg_abs_p / surface_pressure)
-        lbl = _gas_label(g)
-        _gas_consumed[lbl] = _gas_consumed.get(lbl, 0.0) + litres
-
-    # Profile and stop runtime tracking
-    _profile: list[tuple[float, float]] = [(0.0, 0.0)]
-    _stop_runtimes: dict[float, float] = {}
-    _ceiling_profile: list[tuple[float, float, float]] = [(0.0, 0.0, 0.0)]
-    _gas_pressure_profile: dict[str, list[tuple[float, float]]] = {}
-
-    # Build cylinder lookup for gas pressure profile snapshots
-    _cylinders_by_label: dict[str, Cylinder] = {}
-    if _track_enabled:
-        _all_divegases_list = [back_gas] + (deco_gases or [])
-        _all_cyls_list = ([back_cylinder] if back_cylinder else []) + (
+    # Cylinder setup
+    if state.track_enabled:
+        all_divegases_list = [back_gas] + (deco_gases or [])
+        all_cyls_list = ([back_cylinder] if back_cylinder else []) + (
             deco_cylinders if deco_cylinders else []
         )
-        if len(_all_divegases_list) != len(_all_cyls_list):
-            n_gases = len(_all_divegases_list)
-            n_cyls = len(_all_cyls_list)
+        if len(all_divegases_list) != len(all_cyls_list):
+            n_gases = len(all_divegases_list)
+            n_cyls = len(all_cyls_list)
             raise ValueError(
                 f"Number of gases ({n_gases}: 1 back_gas + {n_gases - 1} deco_gases) "
                 f"does not match number of cylinders ({n_cyls}: "
@@ -242,341 +611,73 @@ def plan_dive(
                 f"{len(deco_cylinders) if deco_cylinders else 0} deco_cylinders). "
                 f"Provide a cylinder for each gas, or omit cylinders entirely."
             )
-        for _dg, _dc in zip(_all_divegases_list, _all_cyls_list, strict=True):
-            _cylinders_by_label[_gas_label(_dg)] = _dc
-        for _lbl, _cyl in _cylinders_by_label.items():
-            _gas_pressure_profile[_lbl] = [(0.0, round(_cyl.fill_bar, 1))]
+        for dg, dc in zip(all_divegases_list, all_cyls_list, strict=True):
+            state.cylinders_by_label[_gas_label(dg)] = dc
+        for lbl, cyl in state.cylinders_by_label.items():
+            state.gas_pressure_profile[lbl] = [(0.0, round(cyl.fill_bar, 1))]
 
-    def _snapshot_state(t: float, d: float, snap_tissues: TissueState, snap_gf: float) -> None:
-        """Record ceiling depth and gas pressures at a profile waypoint."""
-        ceiling_p = deco_model.ceiling(snap_tissues, snap_gf)
-        ceiling_d = max(0.0, _pressure_to_depth(ceiling_p))
-        _ceiling_profile.append((round(t, 2), round(d, 1), round(ceiling_d, 1)))
-        if _track_enabled:
-            for _lbl, _cyl in _cylinders_by_label.items():
-                _consumed = _gas_consumed.get(_lbl, 0.0)
-                _remaining = max(0.0, _cyl.fill_bar - _consumed / _cyl.volume_litres)
-                _gas_pressure_profile[_lbl].append((round(t, 2), round(_remaining, 1)))
+    # --- Descent ---
+    descent_time = _descend(
+        state,
+        deco_model,
+        depth,
+        descent_rate,
+        back_gas,
+        sac_bottom,
+        descent_stops,
+    )
 
-    # -- DESCENT (with optional stops) --
-    descent_rate_bar = descent_rate * const.METER_TO_BAR
-
-    # Build ordered list of descent waypoints: (depth, stop_time)
-    # Sort shallower-first so we descend through them in order
-    _descent_stops: list[tuple[float, float]] = []
-    if descent_stops:
-        _descent_stops = sorted(
-            [(float(d), float(t)) for d, t in descent_stops if 0 < d < depth],
-            key=lambda x: x[0],
-        )
-
-    _prev_depth = 0.0
-    descent_time = 0.0
-    runtime = 0.0
-    for stop_depth, stop_time in _descent_stops:
-        seg_time = (stop_depth - _prev_depth) / descent_rate
-        seg_start_p = _depth_to_pressure(_prev_depth)
-        tissues = deco_model.load(tissues, seg_start_p, seg_time, back_gas, descent_rate_bar)
-        avg_seg_p = (_depth_to_pressure(_prev_depth) + _depth_to_pressure(stop_depth)) / 2.0
-        po2_seg = (back_gas.o2 / 100.0) * avg_seg_p
-        cns_tracker.update(po2_seg, seg_time)
-        otu_tracker.update(po2_seg, seg_time)
-        if _track_enabled:
-            _track_gas(back_gas, seg_time, avg_seg_p, sac_bottom)
-        runtime += seg_time
-        descent_time += seg_time
-        # Arrival waypoint: start of stop — gives the chart a flat horizontal stop segment
-        _snapshot_state(runtime, stop_depth, tissues, gf_low)
-        _profile.append((round(runtime, 2), stop_depth))
-
-        # Stop at this depth
-        stop_p = _depth_to_pressure(stop_depth)
-        po2_stop = (back_gas.o2 / 100.0) * stop_p
-        tissues = deco_model.load(tissues, stop_p, stop_time, back_gas, 0.0)
-        cns_tracker.update(po2_stop, stop_time)
-        otu_tracker.update(po2_stop, stop_time)
-        if _track_enabled:
-            _track_gas(back_gas, stop_time, stop_p, sac_bottom)
-        runtime += stop_time
-        descent_time += stop_time
-        _snapshot_state(runtime, stop_depth, tissues, gf_low)
-        _profile.append((round(runtime, 2), stop_depth))
-        _prev_depth = stop_depth
-
-    # Final descent segment from last waypoint to target depth
-    final_seg_time = (depth - _prev_depth) / descent_rate
-    seg_start_p = _depth_to_pressure(_prev_depth)
-    tissues = deco_model.load(tissues, seg_start_p, final_seg_time, back_gas, descent_rate_bar)
-    avg_descent_pressure = (_depth_to_pressure(_prev_depth) + _depth_to_pressure(depth)) / 2.0
-    po2_descent = (back_gas.o2 / 100.0) * avg_descent_pressure
-    cns_tracker.update(po2_descent, final_seg_time)
-    otu_tracker.update(po2_descent, final_seg_time)
-    if _track_enabled:
-        _track_gas(back_gas, final_seg_time, avg_descent_pressure, sac_bottom)
-    runtime += final_seg_time
-    descent_time += final_seg_time
-    _snapshot_state(runtime, depth, tissues, gf_low)
-    _profile.append((round(runtime, 2), depth))
-
-    # -- BOTTOM --
+    # --- Bottom ---
     bottom_duration = bottom_time - descent_time
     if bottom_duration <= 0:
         raise ValueError("Bottom time must be greater than descent time")
+    _bottom(state, deco_model, depth, bottom_duration, back_gas, sac_bottom)
 
-    abs_p_bottom = _depth_to_pressure(depth)
-    po2_bottom = (back_gas.o2 / 100.0) * abs_p_bottom
-
-    # Process in 1-min steps so the ceiling profile captures growth through bottom time
-    remaining_bottom = bottom_duration
-    while remaining_bottom > 0:
-        step = min(1.0, remaining_bottom)
-        tissues = deco_model.load(tissues, abs_p_bottom, step, back_gas, 0.0)
-        cns_tracker.update(po2_bottom, step)
-        otu_tracker.update(po2_bottom, step)
-        if _track_enabled:
-            _track_gas(back_gas, step, abs_p_bottom, sac_bottom)
-        runtime += step
-        remaining_bottom -= step
-        _snapshot_state(runtime, depth, tissues, gf_low)
-
-    _profile.append((round(runtime, 2), depth))
-
-    # Max gas density starts at max depth on back gas
-    max_gas_density = _gas_density(back_gas, abs_p_bottom)
-
-    # -- ASCENT with DECO --
-    all_gases = [back_gas] + sorted(deco_gases, key=lambda g: g.switch_depth, reverse=True)
-    ascent_rate_bar = ascent_rate * const.METER_TO_BAR
-    stops: list[DecoStop] = []
-    current_depth = depth
-    current_gas = back_gas
-
-    # Determine ceiling
-    ceiling_depth = _pressure_to_depth(deco_model.ceiling(tissues, gf_low))
-    first_stop_depth = max(last_stop_depth, _ceil_to_3m(ceiling_depth))
-
-    # Check if NDL dive
-    test_ascent_time = current_depth / ascent_rate
-    test_tissues = deco_model.load(
-        tissues, abs_p_bottom, test_ascent_time, current_gas, -ascent_rate_bar
+    # --- Ascent ---
+    stops, total_deco_time, ndl, stop_runtimes, back_gas_ascent_litres = _ascend_with_deco(
+        state,
+        deco_model,
+        depth,
+        back_gas,
+        deco_gases,
+        ascent_rate,
+        last_stop_depth,
+        sac_bottom,
+        sac_deco,
+        gf_low,
+        gf_high,
     )
-    surface_ceiling = deco_model.ceiling(test_tissues, gf_high)
 
-    if surface_ceiling <= const.SURFACE_PRESSURE:
-        # NDL dive - compute remaining no-deco time via binary search
-        # NDL = additional minutes at depth before a deco stop would be required
-        ndl_lo, ndl_hi = 0.0, 600.0  # search up to 10 hours
-        for _ in range(30):  # 30 iterations gives ~0.001 min precision
-            ndl_mid = (ndl_lo + ndl_hi) / 2.0
-            t_tissues = deco_model.load(tissues, abs_p_bottom, ndl_mid, current_gas, 0.0)
-            t_ascent_time = current_depth / ascent_rate
-            t_tissues_asc = deco_model.load(
-                t_tissues, abs_p_bottom, t_ascent_time, current_gas, -ascent_rate_bar
-            )
-            t_ceiling = deco_model.ceiling(t_tissues_asc, gf_high)
-            if t_ceiling <= const.SURFACE_PRESSURE:
-                ndl_lo = ndl_mid
-            else:
-                ndl_hi = ndl_mid
-        computed_ndl = round(ndl_lo, 0)
-
-        # Ascend
-        ascent_time = current_depth / ascent_rate
-        avg_ascent_p = abs_p_bottom - (current_depth * const.METER_TO_BAR / 2.0)
-        po2_ascent = (current_gas.o2 / 100.0) * avg_ascent_p
-        cns_tracker.update(po2_ascent, ascent_time)
-        otu_tracker.update(po2_ascent, ascent_time)
-
-        if _track_enabled:
-            _track_gas(current_gas, ascent_time, avg_ascent_p, sac_deco)
-
-        tissues = test_tissues
-        runtime += ascent_time
-        _snapshot_state(runtime, 0.0, tissues, gf_high)
-        _profile.append((round(runtime, 2), 0.0))
-
-        return DiveSummary(
-            runtime=round(runtime, 1),
-            total_deco_time=0.0,
-            stops=[],
-            max_depth=depth,
-            tissues_final=tissues,
-            cns_percent=round(cns_tracker.cns_percent, 1),
-            otu=round(otu_tracker.otu, 1),
-            ndl=computed_ndl,
-            max_gas_density=round(max_gas_density, 3),
-            stop_runtimes={},
-            profile=_profile,
-            back_gas_ascent_litres=0.0,
-            ceiling_profile=_ceiling_profile,
-            gas_pressure_profile=_gas_pressure_profile,
-        )
-
-    # Deco dive - ascend to first stop
-    total_deco_time = 0.0
-
-    # Free ascent to first stop
-    ascent_to_first = current_depth - first_stop_depth
-    _back_gas_ascent_litres = 0.0
-    _on_back_gas = True
-    if ascent_to_first > 0:
-        free_ascent_time = ascent_to_first / ascent_rate
-        tissues = deco_model.load(
-            tissues, abs_p_bottom, free_ascent_time, current_gas, -ascent_rate_bar
-        )
-        avg_p = abs_p_bottom - (ascent_to_first * const.METER_TO_BAR / 2.0)
-        po2 = (current_gas.o2 / 100.0) * avg_p
-        cns_tracker.update(po2, free_ascent_time)
-        otu_tracker.update(po2, free_ascent_time)
-        if _track_enabled:
-            _track_gas(current_gas, free_ascent_time, avg_p, sac_deco)
-        # Include free ascent in back_gas_ascent_litres (stressed rate)
-        _back_gas_ascent_litres += sac_bottom * free_ascent_time * (avg_p / surface_pressure)
-        runtime += free_ascent_time
-        current_depth = first_stop_depth
-    _snapshot_state(runtime, first_stop_depth, tissues, gf_low)
-    _profile.append((round(runtime, 2), first_stop_depth))
-
-    # Process each 3m stop from first_stop_depth down to last_stop_depth.
-    # GF is interpolated linearly with depth: gf_low at first_stop_depth,
-    # gf_high at the surface (depth=0). This is the standard Baker GF definition.
-    stop_depth = first_stop_depth
-    while stop_depth >= last_stop_depth:
-        abs_p_stop = _depth_to_pressure(stop_depth)
-        if first_stop_depth > 0:
-            current_gf = (
-                gf_low + (gf_high - gf_low) * (first_stop_depth - stop_depth) / first_stop_depth
-            )
-        else:
-            current_gf = gf_high
-        current_gf = min(current_gf, gf_high)
-        # GF for the NEXT stop (3m shallower) — used in the ascent check
-        next_stop_depth = stop_depth - 3.0
-        if first_stop_depth > 0 and next_stop_depth > 0:
-            next_gf = (
-                gf_low
-                + (gf_high - gf_low) * (first_stop_depth - next_stop_depth) / first_stop_depth
-            )
-        else:
-            next_gf = gf_high
-        next_gf = min(next_gf, gf_high)
-
-        # Check for gas switch at this depth — pick the richest (highest O2)
-        # eligible gas whose switch_depth allows use at this stop.
-        best_gas = current_gas
-        for g in all_gases[1:]:  # skip back gas
-            if g.switch_depth >= stop_depth and g.o2 > best_gas.o2:
-                best_gas = g
-        if best_gas != current_gas:
-            current_gas = best_gas
-
-        # Detect back gas -> deco gas switch for ascent tracking
-        if current_gas != back_gas and _on_back_gas:
-            _on_back_gas = False
-
-        # Track density for the current gas at this stop depth
-        max_gas_density = max(max_gas_density, _gas_density(current_gas, abs_p_stop))
-
-        # Wait at stop until we can ascend to next stop
-        stop_time = 0.0
-        while True:
-            # Check if we can ascend 3m (or to surface for last stop)
-            if stop_depth <= last_stop_depth:
-                ascent_seg_time = stop_depth / ascent_rate
-                test_tissues = deco_model.load(
-                    tissues, abs_p_stop, ascent_seg_time, current_gas, -ascent_rate_bar
-                )
-                test_ceiling = deco_model.ceiling(test_tissues, gf_high)
-                if test_ceiling <= const.SURFACE_PRESSURE:
-                    break
-            else:
-                ascent_seg_time = 3.0 / ascent_rate
-                test_tissues = deco_model.load(
-                    tissues, abs_p_stop, ascent_seg_time, current_gas, -ascent_rate_bar
-                )
-                next_stop_p = _depth_to_pressure(stop_depth - 3.0)
-                test_ceiling = deco_model.ceiling(test_tissues, next_gf)
-                if test_ceiling <= next_stop_p:
-                    break
-
-            # Stay 1 more minute
-            tissues = deco_model.load(tissues, abs_p_stop, 1.0, current_gas, 0.0)
-            po2 = (current_gas.o2 / 100.0) * abs_p_stop
-            cns_tracker.update(po2, 1.0)
-            otu_tracker.update(po2, 1.0)
-            if _track_enabled:
-                _track_gas(current_gas, 1.0, abs_p_stop, sac_deco)
-            if _on_back_gas:
-                _back_gas_ascent_litres += sac_bottom * 1.0 * (abs_p_stop / surface_pressure)
-            stop_time += 1.0
-            runtime += 1.0
-
-        if stop_time > 0:
-            stops.append(DecoStop(depth=stop_depth, time=stop_time))
-            total_deco_time += stop_time
-            _stop_runtimes[stop_depth] = round(runtime, 2)
-        _snapshot_state(runtime, stop_depth, tissues, current_gf)
-        _profile.append((round(runtime, 2), stop_depth))
-
-        # Ascend 3m to next stop (or to surface from last stop)
-        if stop_depth <= last_stop_depth:
-            ascent_time = stop_depth / ascent_rate
-            tissues = deco_model.load(
-                tissues, abs_p_stop, ascent_time, current_gas, -ascent_rate_bar
-            )
-            avg_p = abs_p_stop - (stop_depth * const.METER_TO_BAR / 2.0)
-            next_profile_depth = 0.0
-        else:
-            ascent_time = 3.0 / ascent_rate
-            tissues = deco_model.load(
-                tissues, abs_p_stop, ascent_time, current_gas, -ascent_rate_bar
-            )
-            avg_p = abs_p_stop - (3.0 * const.METER_TO_BAR / 2.0)
-            next_profile_depth = stop_depth - 3.0
-
-        po2 = (current_gas.o2 / 100.0) * avg_p
-        cns_tracker.update(po2, ascent_time)
-        otu_tracker.update(po2, ascent_time)
-        if _track_enabled:
-            _track_gas(current_gas, ascent_time, avg_p, sac_deco)
-        if _on_back_gas:
-            _back_gas_ascent_litres += sac_bottom * ascent_time * (avg_p / surface_pressure)
-        runtime += ascent_time
-        _snapshot_state(runtime, next_profile_depth, tissues, next_gf)
-        _profile.append((round(runtime, 2), next_profile_depth))
-
-        if stop_depth <= last_stop_depth:
-            break
-        stop_depth -= 3.0
-
-    # Build gas_usage from tracked consumption
-    _gas_usage: dict[str, GasUsage] = {}
-    if _track_enabled:
+    # --- Build gas_usage ---
+    gas_usage: dict[str, GasUsage] = {}
+    if state.track_enabled:
         all_divegases = [back_gas] + (deco_gases or [])
-        all_cylinders_list = ([back_cylinder] if back_cylinder else []) + (
-            deco_cylinders if deco_cylinders else []
-        )
+        _cyl_list: list[Cylinder | None] = []
+        if back_cylinder:
+            _cyl_list.append(back_cylinder)
+        if deco_cylinders:
+            _cyl_list.extend(deco_cylinders)
         for i, g in enumerate(all_divegases):
             lbl = _gas_label(g)
-            cyl = all_cylinders_list[i] if i < len(all_cylinders_list) else None
-            consumed = _gas_consumed.get(lbl, 0.0)
-            if cyl is not None:
-                _gas_usage[lbl] = GasUsage(gas=g, cylinder=cyl, consumed_litres=consumed)
+            cyl_i: Cylinder | None = _cyl_list[i] if i < len(_cyl_list) else None
+            consumed = state.gas_consumed.get(lbl, 0.0)
+            if cyl_i is not None:
+                gas_usage[lbl] = GasUsage(gas=g, cylinder=cyl_i, consumed_litres=consumed)
 
     return DiveSummary(
-        runtime=round(runtime, 1),
+        runtime=round(state.runtime, 1),
         total_deco_time=round(total_deco_time, 1),
         stops=stops,
         max_depth=depth,
-        tissues_final=tissues,
-        cns_percent=round(cns_tracker.cns_percent, 1),
-        otu=round(otu_tracker.otu, 1),
-        ndl=None,
-        gas_usage=_gas_usage,
-        max_gas_density=round(max_gas_density, 3),
-        stop_runtimes=_stop_runtimes,
-        profile=_profile,
-        back_gas_ascent_litres=round(_back_gas_ascent_litres, 2),
-        ceiling_profile=_ceiling_profile,
-        gas_pressure_profile=_gas_pressure_profile,
+        tissues_final=state.tissues,
+        cns_percent=round(state.cns_tracker.cns_percent, 1),
+        otu=round(state.otu_tracker.otu, 1),
+        ndl=ndl,
+        gas_usage=gas_usage,
+        max_gas_density=round(state.max_gas_density, 3),
+        stop_runtimes=stop_runtimes,
+        profile=state.profile,
+        back_gas_ascent_litres=round(back_gas_ascent_litres, 2),
+        ceiling_profile=state.ceiling_profile,
+        gas_pressure_profile=state.gas_pressure_profile,
     )
