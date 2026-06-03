@@ -434,11 +434,14 @@ def plan_dive(
             next_gf = gf_high
         next_gf = min(next_gf, gf_high)
 
-        # Check for gas switch at this depth
+        # Check for gas switch at this depth — pick the richest (highest O2)
+        # eligible gas whose switch_depth allows use at this stop.
+        best_gas = current_gas
         for g in all_gases[1:]:  # skip back gas
-            if g.switch_depth >= stop_depth and g != current_gas:
-                current_gas = g
-                break
+            if g.switch_depth >= stop_depth and g.o2 > best_gas.o2:
+                best_gas = g
+        if best_gas != current_gas:
+            current_gas = best_gas
 
         # Detect back gas -> deco gas switch for ascent tracking
         if current_gas != back_gas and _on_back_gas:
