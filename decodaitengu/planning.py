@@ -222,6 +222,16 @@ def plan_dive(
         _all_cyls_list = ([back_cylinder] if back_cylinder else []) + (
             deco_cylinders if deco_cylinders else []
         )
+        if len(_all_divegases_list) != len(_all_cyls_list):
+            n_gases = len(_all_divegases_list)
+            n_cyls = len(_all_cyls_list)
+            raise ValueError(
+                f"Number of gases ({n_gases}: 1 back_gas + {n_gases - 1} deco_gases) "
+                f"does not match number of cylinders ({n_cyls}: "
+                f"{'1 back_cylinder' if back_cylinder else '0 back_cylinder'} + "
+                f"{len(deco_cylinders) if deco_cylinders else 0} deco_cylinders). "
+                f"Provide a cylinder for each gas, or omit cylinders entirely."
+            )
         for _dg, _dc in zip(_all_divegases_list, _all_cyls_list, strict=True):
             _cylinders_by_label[_gas_label(_dg)] = _dc
         for _lbl, _cyl in _cylinders_by_label.items():
