@@ -150,6 +150,7 @@ class Step:
     :param tissues: Tissue compartment state.
     :param gf: Current gradient factor value.
     :param ceiling: Current ascent ceiling pressure [bar].
+    :param surface_pressure: Surface atmospheric pressure [bar].
     """
 
     phase: Phase
@@ -159,11 +160,12 @@ class Step:
     tissues: TissueState
     gf: float
     ceiling: float = 0.0
+    surface_pressure: float = const.SURFACE_PRESSURE
 
     @property
     def depth(self) -> float:
         """Depth in metres."""
-        return (self.abs_p - const.SURFACE_PRESSURE) / const.METER_TO_BAR
+        return (self.abs_p - self.surface_pressure) / const.METER_TO_BAR
 
     def __repr__(self) -> str:
         return (
