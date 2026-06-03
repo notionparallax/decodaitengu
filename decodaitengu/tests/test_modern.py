@@ -217,6 +217,22 @@ class TestCNSTracker:
         cns.reset()
         assert cns.cns_percent == 0.0
 
+    def test_high_po2_does_not_overflow(self):
+        """CNS rate should be clamped at high PO2 (formula only valid to 1.6)."""
+        cns = CNSTracker(CNSMethod.EXPONENTIAL)
+        cns.update(po2=3.0, time=1.0)
+        # Should be clamped to PO2=1.6 rate (~2.22%/min), not overflow
+        assert cns.cns_percent < 5.0
+        assert cns.cns_percent > 0.0
+
+    def test_cns_at_1_8_is_finite_and_reasonable(self):
+        """CNS at PO2=1.8 should be clamped to 1.6 rate."""
+        cns = CNSTracker(CNSMethod.EXPONENTIAL)
+        cns.update(po2=1.8, time=10.0)
+        # Clamped to 1.6 rate: ~2.22%/min * 10min = ~22%
+        assert cns.cns_percent > 10
+        assert cns.cns_percent < 40
+
 
 class TestOTUTracker:
     def test_no_accumulation_below_threshold(self):

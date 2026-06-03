@@ -228,3 +228,57 @@ class TestPlanDiveValidation:
         )
         assert result.runtime > 0
         assert len(result.stops) > 0
+
+    # --- PO2 safety validation ---
+    def test_deco_gas_po2_exceeds_max(self):
+        """O2 at 30m (PO2 ~4.0) should be rejected with default max_po2."""
+        with pytest.raises(ValueError, match="exceeds max_po2"):
+            plan_dive(
+                depth=60,
+                bottom_time=20,
+                deco_gases=[Gas(100, 0, switch_depth=30)],
+                gf=(30, 85),
+            )
+
+    def test_deco_gas_po2_ean50_at_30m_rejected(self):
+        """EAN50 at 30m has PO2 ~2.0, should be rejected."""
+        with pytest.raises(ValueError, match="exceeds max_po2"):
+            plan_dive(
+                depth=60,
+                bottom_time=20,
+                deco_gases=[Gas(50, 0, switch_depth=30)],
+                gf=(30, 85),
+            )
+
+    def test_deco_gas_po2_o2_at_6m_allowed(self):
+        """O2 at 6m (PO2 ~1.61) should be allowed with default max_po2=1.61."""
+        result = plan_dive(
+            depth=40,
+            bottom_time=20,
+            deco_gases=[Gas(100, 0, switch_depth=6)],
+            gf=(30, 85),
+        )
+        assert result.runtime > 0
+
+    def test_deco_gas_po2_custom_limit(self):
+        """Custom max_po2 should override the default."""
+        # O2 at 6m (PO2 ~1.61) rejected with max_po2=1.4
+        with pytest.raises(ValueError, match="exceeds max_po2"):
+            plan_dive(
+                depth=40,
+                bottom_time=20,
+                deco_gases=[Gas(100, 0, switch_depth=6)],
+                gf=(30, 85),
+                max_po2=1.4,
+            )
+
+    def test_deco_gas_po2_high_limit_allows_deep_switch(self):
+        """Higher max_po2 allows deeper switches for advanced users."""
+        result = plan_dive(
+            depth=60,
+            bottom_time=20,
+            deco_gases=[Gas(50, 0, switch_depth=21)],
+            gf=(30, 85),
+            max_po2=2.0,
+        )
+        assert result.runtime > 0
