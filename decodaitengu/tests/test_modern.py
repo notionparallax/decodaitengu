@@ -286,6 +286,34 @@ class TestPlanDive:
         with pytest.raises(ValueError):
             plan_dive(depth=100, bottom_time=2, descent_rate=20)
 
+    def test_cylinder_gas_count_mismatch(self):
+        """Mismatched gas/cylinder counts should raise ValueError with clear message."""
+        with pytest.raises(ValueError, match="does not match number of cylinders"):
+            plan_dive(
+                depth=50,
+                bottom_time=20,
+                back_gas=Gas(21, 35),
+                deco_gases=[Gas(50, 0, switch_depth=21), Gas(100, 0, switch_depth=6)],
+                back_cylinder=Cylinder(volume_litres=12, fill_bar=200),
+                deco_cylinders=[Cylinder(volume_litres=7, fill_bar=200)],
+                # 3 gases but only 2 cylinders
+                gf=(30, 85),
+            )
+
+    def test_cylinder_tracking_valid(self):
+        """Matching gas/cylinder counts should work."""
+        result = plan_dive(
+            depth=40,
+            bottom_time=25,
+            back_gas=Gas(21, 35),
+            deco_gases=[Gas(50, 0, switch_depth=21)],
+            back_cylinder=Cylinder(volume_litres=12, fill_bar=200),
+            deco_cylinders=[Cylinder(volume_litres=7, fill_bar=200)],
+            gf=(30, 85),
+        )
+        assert result.runtime > 0
+        assert len(result.gas_usage) > 0
+
     def test_model_selection_zhl16b(self):
         """Should work with ZHL16B model."""
         result = plan_dive(depth=35, bottom_time=40, model=ZHL16B, gf=(30, 85))
