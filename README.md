@@ -71,8 +71,17 @@ print(engine.deco_table.total)  # 44.0
 
 ```bash
 pip install -e ".[dev]"
+pre-commit install
+pre-commit run --all-files
 pytest
 ruff check .
+```
+
+The pre-commit hooks intentionally run check-only commands matching CI:
+
+```bash
+ruff check decodaitengu/
+ruff format --check decodaitengu/
 ```
 
 ## License

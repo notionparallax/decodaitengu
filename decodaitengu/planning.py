@@ -230,6 +230,9 @@ def plan_dive(
             _track_gas(back_gas, seg_time, avg_seg_p, sac_bottom)
         runtime += seg_time
         descent_time += seg_time
+        # Arrival waypoint: start of stop — gives the chart a flat horizontal stop segment
+        _snapshot_state(runtime, stop_depth, tissues, gf_low)
+        _profile.append((round(runtime, 2), stop_depth))
 
         # Stop at this depth
         stop_p = _depth_to_pressure(stop_depth)
@@ -266,17 +269,21 @@ def plan_dive(
         raise ValueError("Bottom time must be greater than descent time")
 
     abs_p_bottom = _depth_to_pressure(depth)
-    tissues = deco_model.load(tissues, abs_p_bottom, bottom_duration, back_gas, 0.0)
-
     po2_bottom = (back_gas.o2 / 100.0) * abs_p_bottom
-    cns_tracker.update(po2_bottom, bottom_duration)
-    otu_tracker.update(po2_bottom, bottom_duration)
 
-    runtime += bottom_duration
+    # Process in 1-min steps so the ceiling profile captures growth through bottom time
+    remaining_bottom = bottom_duration
+    while remaining_bottom > 0:
+        step = min(1.0, remaining_bottom)
+        tissues = deco_model.load(tissues, abs_p_bottom, step, back_gas, 0.0)
+        cns_tracker.update(po2_bottom, step)
+        otu_tracker.update(po2_bottom, step)
+        if _track_enabled:
+            _track_gas(back_gas, step, abs_p_bottom, sac_bottom)
+        runtime += step
+        remaining_bottom -= step
+        _snapshot_state(runtime, depth, tissues, gf_low)
 
-    if _track_enabled:
-        _track_gas(back_gas, bottom_duration, abs_p_bottom, sac_bottom)
-    _snapshot_state(runtime, depth, tissues, gf_low)
     _profile.append((round(runtime, 2), depth))
 
     # Max gas density starts at max depth on back gas

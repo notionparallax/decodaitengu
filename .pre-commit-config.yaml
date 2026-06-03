@@ -1,0 +1,13 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check-ci
+        name: ruff check (ci parity)
+        entry: ruff check decodaitengu/
+        language: system
+        pass_filenames: false
+      - id: ruff-format-check-ci
+        name: ruff format --check (ci parity)
+        entry: ruff format --check decodaitengu/
+        language: system
+        pass_filenames: false
