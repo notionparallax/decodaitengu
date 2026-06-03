@@ -99,6 +99,12 @@ for exact Subsurface reference values.
 **This library is not a certified dive planning tool. Always validate plans
 against established software and never dive beyond your training.**
 
+## Documentation
+
+The legacy Sphinx docs (referencing the old `decotengu` namespace) have been
+removed. API documentation will be rebuilt from the current `decodaitengu`
+package in a future release.
+
 ## Development
 
 ```bash
