@@ -39,7 +39,35 @@ result = plan_dive(
     gf=(30, 85),
 )
 print(f"Runtime: {result.runtime} min")
+
+# Segmented ascent profile: 10 m/min to 6m, then 0.5 m/min to surface
+result = plan_dive(
+    depth=45,
+    bottom_time=20,
+    ascent_rate=[(6, 10), (0, 0.5)],
+)
+
+# Dict form is also supported
+result = plan_dive(
+    depth=45,
+    bottom_time=20,
+    ascent_rate={6: 10, 0: 0.5},
+)
 ```
+
+## Ascent Rates
+
+`plan_dive()` accepts `ascent_rate` in three forms:
+
+- Single float (uniform ascent), e.g. `10.0`
+- List of `(max_depth_m, rate_m_per_min)`, e.g. `[(6, 10), (0, 0.5)]`
+- Dict mapping depth to rate, e.g. `{6: 10, 0: 0.5}`
+
+Rules:
+
+- All rates must be positive finite numbers.
+- Segment depths must be non-negative.
+- Profile input must include a segment at depth `0` (surface).
 
 ## Models
 
@@ -121,6 +149,12 @@ The pre-commit hooks intentionally run check-only commands matching CI:
 ruff check decodaitengu/
 ruff format --check decodaitengu/
 ```
+
+## Release Process
+
+- Add or update release notes in RELEASE_NOTES.md with a heading that matches the tag,
+  for example `## v1.2.1`.
+- The publish workflow enforces this and will fail if the section is missing.
 
 ## License
 
