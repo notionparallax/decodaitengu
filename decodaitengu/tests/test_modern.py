@@ -264,6 +264,32 @@ class TestPlanDive:
         assert result.ndl is not None
         assert result.ndl > 0
 
+    def test_segmented_ascent_slower_surface_increases_runtime(self):
+        baseline = plan_dive(depth=18, bottom_time=15, gf=(100, 100), ascent_rate=10.0)
+        segmented = plan_dive(
+            depth=18,
+            bottom_time=15,
+            gf=(100, 100),
+            ascent_rate=[(6, 10.0), (0, 0.5)],
+        )
+        assert segmented.runtime > baseline.runtime
+
+    def test_segmented_ascent_dict_and_list_equivalent(self):
+        from_list = plan_dive(
+            depth=45,
+            bottom_time=20,
+            gf=(30, 85),
+            ascent_rate=[(21, 10.0), (6, 6.0), (0, 3.0)],
+        )
+        from_dict = plan_dive(
+            depth=45,
+            bottom_time=20,
+            gf=(30, 85),
+            ascent_rate={21: 10.0, 6: 6.0, 0: 3.0},
+        )
+        assert from_dict.runtime == from_list.runtime
+        assert from_dict.total_deco_time == from_list.total_deco_time
+
     def test_ndl_is_none_for_deco_dives(self):
         """Deco dives should have ndl=None."""
         result = plan_dive(depth=40, bottom_time=30, gf=(30, 85))

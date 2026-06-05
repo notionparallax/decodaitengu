@@ -41,6 +41,7 @@ Example::
 """
 
 import math
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 from . import const
@@ -75,6 +76,9 @@ _R = 0.083145
 # Body temperature [K] (37 degC) -- standard for dive gas density calculations
 _BODY_TEMP_K = 310.15
 
+AscentRateInput = float | list[tuple[float, float]] | dict[float, float]
+AscentProfile = list[tuple[float, float]]
+
 
 def _gas_density(gas: Gas, abs_p: float) -> float:
     """Calculate gas density at a given absolute pressure.
@@ -96,6 +100,171 @@ def _gas_density(gas: Gas, abs_p: float) -> float:
 def _gas_label(g: Gas) -> str:
     """Return a human-readable label for a gas mix."""
     return g.label if g.label else f"Tx{g.o2:.0f}/{g.he:.0f}"
+
+
+def _normalize_ascent_profile(ascent_rate: AscentRateInput) -> AscentProfile:
+    """Normalize ascent rate input to a sorted depth->rate profile.
+
+    The returned profile is sorted by depth descending and interpreted as:
+    each tuple (max_depth_m, rate_m_per_min) applies from depths deeper than
+    max_depth_m up to max_depth_m.
+    """
+    if isinstance(ascent_rate, (int, float)):
+        rate = float(ascent_rate)
+        if not math.isfinite(rate) or rate <= 0:
+            raise ValueError(f"ascent_rate must be a positive finite number, got {ascent_rate}")
+        return [(0.0, rate)]
+
+    raw_segments: list[tuple[float, float]] = []
+    if isinstance(ascent_rate, Mapping):
+        raw_segments = [(float(d), float(r)) for d, r in ascent_rate.items()]
+    elif isinstance(ascent_rate, Sequence) and not isinstance(ascent_rate, (str, bytes)):
+        for segment in ascent_rate:
+            if (
+                not isinstance(segment, Sequence)
+                or isinstance(segment, (str, bytes))
+                or len(segment) != 2
+            ):
+                raise ValueError(
+                    "ascent_rate profile entries must be (max_depth_m, rate_m_per_min)"
+                )
+            depth_m = float(segment[0])
+            rate = float(segment[1])
+            raw_segments.append((depth_m, rate))
+    else:
+        raise ValueError(
+            "ascent_rate must be a float, list of (max_depth_m, rate_m_per_min), "
+            "or dict[max_depth_m, rate_m_per_min]"
+        )
+
+    if not raw_segments:
+        raise ValueError("ascent_rate profile must contain at least one segment")
+
+    by_depth: dict[float, float] = {}
+    for i, (max_depth_m, rate) in enumerate(raw_segments):
+        if not math.isfinite(max_depth_m) or max_depth_m < 0:
+            raise ValueError(
+                f"ascent_rate segment {i} depth must be a finite number >= 0, got {max_depth_m}"
+            )
+        if not math.isfinite(rate) or rate <= 0:
+            raise ValueError(
+                f"ascent_rate segment {i} rate must be a positive finite number, got {rate}"
+            )
+        if max_depth_m in by_depth:
+            raise ValueError(f"ascent_rate profile has duplicate depth breakpoint: {max_depth_m}")
+        by_depth[max_depth_m] = rate
+
+    if 0.0 not in by_depth:
+        raise ValueError("ascent_rate profile must include a surface segment at depth 0")
+
+    return sorted(by_depth.items(), key=lambda x: x[0], reverse=True)
+
+
+def _ascent_rate_at_depth(profile: AscentProfile, start_depth: float) -> float:
+    """Return ascent rate for a segment starting at start_depth."""
+    for max_depth_m, rate in profile:
+        if start_depth > max_depth_m:
+            return rate
+    return profile[-1][1]
+
+
+def _next_ascent_breakpoint(
+    profile: AscentProfile, start_depth: float, target_depth: float
+) -> float | None:
+    """Return the next shallower breakpoint crossed before target_depth."""
+    crossed = [d for d, _ in profile if target_depth < d < start_depth]
+    return max(crossed) if crossed else None
+
+
+def _iter_ascent_segments(
+    start_depth: float,
+    target_depth: float,
+    profile: AscentProfile,
+) -> list[tuple[float, float, float]]:
+    """Build piecewise ascent segments as (start_depth, end_depth, rate)."""
+    if target_depth > start_depth:
+        raise ValueError(
+            f"target_depth ({target_depth}) must be <= start_depth ({start_depth}) for ascent"
+        )
+
+    segments: list[tuple[float, float, float]] = []
+    current_depth = start_depth
+    while current_depth > target_depth:
+        next_break = _next_ascent_breakpoint(profile, current_depth, target_depth)
+        end_depth = next_break if next_break is not None else target_depth
+        rate = _ascent_rate_at_depth(profile, current_depth)
+        segments.append((current_depth, end_depth, rate))
+        current_depth = end_depth
+
+    return segments
+
+
+def _ascent_time(start_depth: float, target_depth: float, profile: AscentProfile) -> float:
+    """Compute ascent time [min] from start_depth to target_depth."""
+    return sum(
+        (seg_start - seg_end) / rate
+        for seg_start, seg_end, rate in _iter_ascent_segments(start_depth, target_depth, profile)
+    )
+
+
+def _load_ascent(
+    model: ZHL16GF,
+    tissues: TissueState,
+    start_depth: float,
+    target_depth: float,
+    gas: Gas,
+    profile: AscentProfile,
+    surface_pressure: float,
+) -> tuple[TissueState, float]:
+    """Load tissues over segmented ascent and return (tissues, elapsed_time)."""
+    elapsed = 0.0
+    loaded = tissues
+    for seg_start, seg_end, rate in _iter_ascent_segments(start_depth, target_depth, profile):
+        seg_time = (seg_start - seg_end) / rate
+        seg_start_p = _depth_to_pressure(seg_start, surface_pressure)
+        seg_rate_bar = -rate * const.METER_TO_BAR
+        loaded = model.load(loaded, seg_start_p, seg_time, gas, seg_rate_bar)
+        elapsed += seg_time
+    return loaded, elapsed
+
+
+def _apply_ascent_to_state(
+    state: "_DiveState",
+    model: ZHL16GF,
+    start_depth: float,
+    target_depth: float,
+    gas: Gas,
+    profile: AscentProfile,
+    sac_rate: float,
+) -> tuple[float, float]:
+    """Apply segmented ascent to state.
+
+    Returns (elapsed_time, pressure_factor_sum) where pressure_factor_sum is
+    sum(segment_time * avg_abs_pressure / surface_pressure), useful for
+    independent SAC calculations.
+    """
+    elapsed = 0.0
+    pressure_factor_sum = 0.0
+    for seg_start, seg_end, rate in _iter_ascent_segments(start_depth, target_depth, profile):
+        seg_time = (seg_start - seg_end) / rate
+        seg_start_p = _depth_to_pressure(seg_start, state.surface_pressure)
+        seg_rate_bar = -rate * const.METER_TO_BAR
+        state.tissues = model.load(state.tissues, seg_start_p, seg_time, gas, seg_rate_bar)
+
+        avg_p = (
+            _depth_to_pressure(seg_start, state.surface_pressure)
+            + _depth_to_pressure(seg_end, state.surface_pressure)
+        ) / 2.0
+        po2 = (gas.o2 / 100.0) * avg_p
+        state.cns_tracker.update(po2, seg_time)
+        state.otu_tracker.update(po2, seg_time)
+        if state.track_enabled:
+            state.track_gas(gas, seg_time, avg_p, sac_rate)
+        state.runtime += seg_time
+        elapsed += seg_time
+        pressure_factor_sum += seg_time * (avg_p / state.surface_pressure)
+
+    return elapsed, pressure_factor_sum
 
 
 @dataclass
@@ -141,7 +310,7 @@ def _validate_inputs(
     depth: float,
     bottom_time: float,
     descent_rate: float,
-    ascent_rate: float,
+    ascent_profile: AscentProfile,
     last_stop_depth: float,
     sac_bottom: float,
     sac_deco: float,
@@ -160,8 +329,8 @@ def _validate_inputs(
         raise ValueError(f"bottom_time must be a positive finite number, got {bottom_time}")
     if not math.isfinite(descent_rate) or descent_rate <= 0:
         raise ValueError(f"descent_rate must be a positive finite number, got {descent_rate}")
-    if not math.isfinite(ascent_rate) or ascent_rate <= 0:
-        raise ValueError(f"ascent_rate must be a positive finite number, got {ascent_rate}")
+    if not ascent_profile:
+        raise ValueError("ascent_rate profile must contain at least one segment")
     if not math.isfinite(last_stop_depth) or last_stop_depth <= 0:
         raise ValueError(
             f"last_stop_depth must be a positive finite number, got {last_stop_depth}"
@@ -343,7 +512,7 @@ def _ascend_with_deco(
     depth: float,
     back_gas: Gas,
     deco_gases: list[Gas],
-    ascent_rate: float,
+    ascent_profile: AscentProfile,
     last_stop_depth: float,
     sac_bottom: float,
     sac_deco: float,
@@ -356,7 +525,6 @@ def _ascend_with_deco(
     """
     sp = state.surface_pressure
     abs_p_bottom = _depth_to_pressure(depth, sp)
-    ascent_rate_bar = ascent_rate * const.METER_TO_BAR
     all_gases = [back_gas] + sorted(deco_gases, key=lambda g: g.switch_depth, reverse=True)
     current_gas = back_gas
 
@@ -365,9 +533,14 @@ def _ascend_with_deco(
     first_stop_depth = max(last_stop_depth, _ceil_to_3m(ceiling_depth))
 
     # Check if NDL dive
-    test_ascent_time = depth / ascent_rate
-    test_tissues = model.load(
-        state.tissues, abs_p_bottom, test_ascent_time, current_gas, -ascent_rate_bar
+    test_tissues, _ = _load_ascent(
+        model,
+        state.tissues,
+        depth,
+        0.0,
+        current_gas,
+        ascent_profile,
+        sp,
     )
     surface_ceiling = model.ceiling(test_tissues, gf_high)
 
@@ -377,9 +550,14 @@ def _ascend_with_deco(
         for _ in range(30):
             ndl_mid = (ndl_lo + ndl_hi) / 2.0
             t_tissues = model.load(state.tissues, abs_p_bottom, ndl_mid, current_gas, 0.0)
-            t_ascent_time = depth / ascent_rate
-            t_tissues_asc = model.load(
-                t_tissues, abs_p_bottom, t_ascent_time, current_gas, -ascent_rate_bar
+            t_tissues_asc, _ = _load_ascent(
+                model,
+                t_tissues,
+                depth,
+                0.0,
+                current_gas,
+                ascent_profile,
+                sp,
             )
             t_ceiling = model.ceiling(t_tissues_asc, gf_high)
             if t_ceiling <= sp:
@@ -389,15 +567,15 @@ def _ascend_with_deco(
         computed_ndl = round(ndl_lo, 0)
 
         # Ascend directly
-        ascent_time = depth / ascent_rate
-        avg_ascent_p = abs_p_bottom - (depth * const.METER_TO_BAR / 2.0)
-        po2_ascent = (current_gas.o2 / 100.0) * avg_ascent_p
-        state.cns_tracker.update(po2_ascent, ascent_time)
-        state.otu_tracker.update(po2_ascent, ascent_time)
-        if state.track_enabled:
-            state.track_gas(current_gas, ascent_time, avg_ascent_p, sac_deco)
-        state.tissues = test_tissues
-        state.runtime += ascent_time
+        _apply_ascent_to_state(
+            state,
+            model,
+            depth,
+            0.0,
+            current_gas,
+            ascent_profile,
+            sac_deco,
+        )
         state.snapshot(model, 0.0, gf_high)
         state.profile.append((round(state.runtime, 2), 0.0))
 
@@ -413,18 +591,16 @@ def _ascend_with_deco(
     # Free ascent to first stop
     ascent_to_first = depth - first_stop_depth
     if ascent_to_first > 0:
-        free_ascent_time = ascent_to_first / ascent_rate
-        state.tissues = model.load(
-            state.tissues, abs_p_bottom, free_ascent_time, current_gas, -ascent_rate_bar
+        free_ascent_time, pressure_factor_sum = _apply_ascent_to_state(
+            state,
+            model,
+            depth,
+            first_stop_depth,
+            current_gas,
+            ascent_profile,
+            sac_deco,
         )
-        avg_p = abs_p_bottom - (ascent_to_first * const.METER_TO_BAR / 2.0)
-        po2 = (current_gas.o2 / 100.0) * avg_p
-        state.cns_tracker.update(po2, free_ascent_time)
-        state.otu_tracker.update(po2, free_ascent_time)
-        if state.track_enabled:
-            state.track_gas(current_gas, free_ascent_time, avg_p, sac_deco)
-        back_gas_ascent_litres += sac_bottom * free_ascent_time * (avg_p / state.surface_pressure)
-        state.runtime += free_ascent_time
+        back_gas_ascent_litres += sac_bottom * pressure_factor_sum
     state.snapshot(model, first_stop_depth, gf_low)
     state.profile.append((round(state.runtime, 2), first_stop_depth))
 
@@ -467,19 +643,30 @@ def _ascend_with_deco(
         stop_time = 0.0
         while True:
             if stop_depth <= last_stop_depth:
-                ascent_seg_time = stop_depth / ascent_rate
-                test_tissues_stop = model.load(
-                    state.tissues, abs_p_stop, ascent_seg_time, current_gas, -ascent_rate_bar
+                test_tissues_stop, _ = _load_ascent(
+                    model,
+                    state.tissues,
+                    stop_depth,
+                    0.0,
+                    current_gas,
+                    ascent_profile,
+                    sp,
                 )
                 test_ceiling = model.ceiling(test_tissues_stop, gf_high)
                 if test_ceiling <= sp:
                     break
             else:
-                ascent_seg_time = 3.0 / ascent_rate
-                test_tissues_stop = model.load(
-                    state.tissues, abs_p_stop, ascent_seg_time, current_gas, -ascent_rate_bar
+                next_stop_depth_for_test = stop_depth - 3.0
+                test_tissues_stop, _ = _load_ascent(
+                    model,
+                    state.tissues,
+                    stop_depth,
+                    next_stop_depth_for_test,
+                    current_gas,
+                    ascent_profile,
+                    sp,
                 )
-                next_stop_p = _depth_to_pressure(stop_depth - 3.0, sp)
+                next_stop_p = _depth_to_pressure(next_stop_depth_for_test, sp)
                 test_ceiling = model.ceiling(test_tissues_stop, next_gf)
                 if test_ceiling <= next_stop_p:
                     break
@@ -505,28 +692,29 @@ def _ascend_with_deco(
 
         # Ascend 3m
         if stop_depth <= last_stop_depth:
-            ascent_time = stop_depth / ascent_rate
-            state.tissues = model.load(
-                state.tissues, abs_p_stop, ascent_time, current_gas, -ascent_rate_bar
+            ascent_time, pressure_factor_sum = _apply_ascent_to_state(
+                state,
+                model,
+                stop_depth,
+                0.0,
+                current_gas,
+                ascent_profile,
+                sac_deco,
             )
-            avg_p = abs_p_stop - (stop_depth * const.METER_TO_BAR / 2.0)
             next_profile_depth = 0.0
         else:
-            ascent_time = 3.0 / ascent_rate
-            state.tissues = model.load(
-                state.tissues, abs_p_stop, ascent_time, current_gas, -ascent_rate_bar
-            )
-            avg_p = abs_p_stop - (3.0 * const.METER_TO_BAR / 2.0)
             next_profile_depth = stop_depth - 3.0
-
-        po2 = (current_gas.o2 / 100.0) * avg_p
-        state.cns_tracker.update(po2, ascent_time)
-        state.otu_tracker.update(po2, ascent_time)
-        if state.track_enabled:
-            state.track_gas(current_gas, ascent_time, avg_p, sac_deco)
+            ascent_time, pressure_factor_sum = _apply_ascent_to_state(
+                state,
+                model,
+                stop_depth,
+                next_profile_depth,
+                current_gas,
+                ascent_profile,
+                sac_deco,
+            )
         if on_back_gas:
-            back_gas_ascent_litres += sac_bottom * ascent_time * (avg_p / state.surface_pressure)
-        state.runtime += ascent_time
+            back_gas_ascent_litres += sac_bottom * pressure_factor_sum
         state.snapshot(model, next_profile_depth, next_gf)
         state.profile.append((round(state.runtime, 2), next_profile_depth))
 
@@ -544,7 +732,7 @@ def plan_dive(
     deco_gases: list[Gas] | None = None,
     gf: tuple[float, float] = (30, 85),
     descent_rate: float = 20.0,
-    ascent_rate: float = 10.0,
+    ascent_rate: AscentRateInput = 10.0,
     last_stop_depth: float = 3.0,
     model: type[ZHL16GF] | ZHL16GF | None = None,
     surface_pressure: float = const.SURFACE_PRESSURE,
@@ -570,7 +758,10 @@ def plan_dive(
     :param gf: Gradient factors as (low, high) percentages in range (0, 100].
         Example: (30, 85). GF low must be <= GF high.
     :param descent_rate: Descent rate [m/min]. Default 20.
-    :param ascent_rate: Ascent rate [m/min]. Default 10.
+    :param ascent_rate: Ascent rate definition. Either a single rate [m/min]
+        (float), a list of (max_depth_m, rate_m_per_min), or a dict mapping
+        max_depth_m to rate_m_per_min. Example: [(6, 10), (0, 0.5)] means
+        10 m/min until 6m, then 0.5 m/min to the surface.
     :param last_stop_depth: Depth of last deco stop [m]. Default 3.
     :param model: Decompression model class or instance. Default ZHL16C.
     :param surface_pressure: Surface pressure [bar]. Default 1.01325 (sea level).
@@ -596,12 +787,14 @@ def plan_dive(
     if deco_gases is None:
         deco_gases = []
 
+    ascent_profile = _normalize_ascent_profile(ascent_rate)
+
     # --- Validate and resolve ---
     gf_low, gf_high = _validate_inputs(
         depth,
         bottom_time,
         descent_rate,
-        ascent_rate,
+        ascent_profile,
         last_stop_depth,
         sac_bottom,
         sac_deco,
@@ -663,7 +856,7 @@ def plan_dive(
         depth,
         back_gas,
         deco_gases,
-        ascent_rate,
+        ascent_profile,
         last_stop_depth,
         sac_bottom,
         sac_deco,

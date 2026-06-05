@@ -143,6 +143,30 @@ class TestPlanDiveValidation:
         with pytest.raises(ValueError, match="ascent_rate must be a positive finite number"):
             plan_dive(depth=30, bottom_time=20, ascent_rate=-10)
 
+    def test_ascent_rate_profile_list_valid(self):
+        result = plan_dive(
+            depth=30,
+            bottom_time=20,
+            ascent_rate=[(6, 10), (0, 3)],
+        )
+        assert result.runtime > 0
+
+    def test_ascent_rate_profile_dict_valid(self):
+        result = plan_dive(
+            depth=30,
+            bottom_time=20,
+            ascent_rate={6: 10, 0: 3},
+        )
+        assert result.runtime > 0
+
+    def test_ascent_rate_profile_requires_surface_segment(self):
+        with pytest.raises(ValueError, match="must include a surface segment"):
+            plan_dive(depth=30, bottom_time=20, ascent_rate=[(6, 10)])
+
+    def test_ascent_rate_profile_invalid_segment_rate(self):
+        with pytest.raises(ValueError, match="segment 1 rate must be a positive finite number"):
+            plan_dive(depth=30, bottom_time=20, ascent_rate=[(6, 10), (0, 0)])
+
     # --- GF ---
     def test_gf_low_zero(self):
         with pytest.raises(ValueError, match="gf_low must be in"):
