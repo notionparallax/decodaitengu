@@ -6,7 +6,7 @@
     "descent_rate_m_per_min": 60,
     "ascent_rate_m_per_min": 10,
     "gf": [50, 70],
-    "notes": "Stop times in minutes at each depth. Total runtime includes descent + bottom + ascent + stops."
+    "notes": "Stop times in minutes at each depth. Total runtime includes descent + bottom + ascent + stops. Plans may override descent_rate_m_per_min, ascent_rate, and gf at the plan level."
   },
   "plans": [
     {
@@ -50,6 +50,24 @@
       "subsurface_total_runtime_min": 45,
       "our_stops": {"18": 1, "15": 1, "12": 2, "9": 3, "6": 5, "3": 8},
       "divergence_notes": "Extra 18m stop (fast He off-gassing). 3m stop: -2min vs Subsurface."
+    },
+    {
+      "id": "51m_tx2227_ean50_o2_gf80",
+      "description": "51m/24min, Tx22/27 + EAN50@21m + O2@6m, GF 50/80, slow shallow ascent",
+      "depth_m": 51,
+      "bottom_time_min": 24,
+      "back_gas": {"o2": 22, "he": 27},
+      "deco_gases": [
+        {"o2": 50, "he": 0, "switch_depth_m": 21},
+        {"o2": 100, "he": 0, "switch_depth_m": 6}
+      ],
+      "gf": [50, 80],
+      "descent_rate_m_per_min": 20,
+      "ascent_rate": [[6, 10.0], [0, 1.0]],
+      "subsurface_stops": {"15": 1, "12": 3, "9": 5, "6": 3, "3": 6},
+      "subsurface_total_runtime_min": 57,
+      "our_stops": {"15": 2, "12": 2, "9": 3, "6": 2, "3": 6},
+      "divergence_notes": "Stops shift shallower vs Subsurface. 9m: -2min, 6m: -1min, 3m matches. He off-gassing in trimix creates slightly different tissue saturation profile."
     }
   ]
 }

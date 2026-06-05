@@ -19,7 +19,7 @@ with REFERENCE_FILE.open() as f:
     REFERENCE = json.load(f)
 
 # Maximum acceptable per-stop divergence from our own regression values (minutes).
-# This is NOT the divergence from Subsurface — it's a regression guard.
+# This is NOT the divergence from Subsurface â€” it's a regression guard.
 REGRESSION_TOLERANCE = 1  # min
 
 # Maximum acceptable per-stop divergence from Subsurface (minutes).
@@ -31,14 +31,19 @@ def _run_plan(plan: dict[str, Any]) -> DiveSummary:
     deco_gases = [
         Gas(o2=g["o2"], he=g["he"], switch_depth=g["switch_depth_m"]) for g in plan["deco_gases"]
     ]
+    meta_gf = tuple(REFERENCE["_meta"]["gf"])
+    gf = tuple(plan["gf"]) if "gf" in plan else meta_gf
+    descent_rate = plan.get("descent_rate_m_per_min", REFERENCE["_meta"]["descent_rate_m_per_min"])
+    raw_ar = plan.get("ascent_rate", REFERENCE["_meta"]["ascent_rate_m_per_min"])
+    ascent_rate = [tuple(seg) for seg in raw_ar] if isinstance(raw_ar, list) else raw_ar
     return plan_dive(
         depth=plan["depth_m"],
         bottom_time=plan["bottom_time_min"],
         back_gas=Gas(o2=plan["back_gas"]["o2"], he=plan["back_gas"]["he"]),
         deco_gases=deco_gases if deco_gases else None,
-        gf=(50, 70),
-        descent_rate=60.0,
-        ascent_rate=10.0,
+        gf=gf,
+        descent_rate=float(descent_rate),
+        ascent_rate=ascent_rate,
     )
 
 
@@ -58,7 +63,7 @@ class TestRegressionBounds:
             actual_time = actual.get(depth, 0)
             assert abs(actual_time - exp_time) <= REGRESSION_TOLERANCE, (
                 f"{plan['id']}: stop at {depth}m drifted to {actual_time} min "
-                f"(expected {exp_time} ±{REGRESSION_TOLERANCE})"
+                f"(expected {exp_time} Â±{REGRESSION_TOLERANCE})"
             )
 
 
@@ -79,5 +84,5 @@ class TestSubsurfaceDivergenceBounds:
             sub_time = plan["subsurface_stops"].get(str(int(depth)), 0)
             assert abs(our_time - sub_time) <= SUBSURFACE_TOLERANCE, (
                 f"{plan['id']}: stop at {depth}m diverges by "
-                f"{our_time - sub_time} min from Subsurface (tolerance ±{SUBSURFACE_TOLERANCE})"
+                f"{our_time - sub_time} min from Subsurface (tolerance Â±{SUBSURFACE_TOLERANCE})"
             )
