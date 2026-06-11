@@ -7,6 +7,15 @@ Policy:
 - Accepted heading formats are `## vX.Y.Z` or `## X.Y.Z`.
 - The publish workflow validates this before building/publishing.
 
+## v1.2.1
+
+- Fix NDL ascent path to step through ascent-rate breakpoints, recording
+  a snapshot at each step so the depth profile and ceiling band render
+  correctly when a segmented ascent rate is configured.
+- Fix deco free ascent (depth to first stop) to likewise step through
+  rate-change breakpoints, preventing the slope from appearing blended
+  across segments (most visible on the Bounce scenario).
+
 ## v1.2.0
 
 - Added segmented ascent support to plan_dive.
