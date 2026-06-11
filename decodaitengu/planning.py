@@ -600,19 +600,28 @@ def _ascend_with_deco(
     back_gas_ascent_litres = 0.0
     on_back_gas = True
 
-    # Free ascent to first stop
-    ascent_to_first = depth - first_stop_depth
-    if ascent_to_first > 0:
-        free_ascent_time, pressure_factor_sum = _apply_ascent_to_state(
-            state,
-            model,
-            depth,
-            first_stop_depth,
-            current_gas,
-            ascent_profile,
-            sac_deco,
-        )
-        back_gas_ascent_litres += sac_bottom * pressure_factor_sum
+    # Free ascent to first stop — step at rate-change breakpoints so each
+    # segment is drawn at the correct slope in the profile graph.
+    if depth > first_stop_depth:
+        current_depth = float(depth)
+        while current_depth > first_stop_depth:
+            next_break = _next_ascent_breakpoint(ascent_profile, current_depth, first_stop_depth)
+            target_depth = next_break if next_break is not None else first_stop_depth
+            _, pressure_factor_sum = _apply_ascent_to_state(
+                state,
+                model,
+                current_depth,
+                target_depth,
+                current_gas,
+                ascent_profile,
+                sac_deco,
+            )
+            back_gas_ascent_litres += sac_bottom * pressure_factor_sum
+            if target_depth > first_stop_depth:
+                # Intermediate breakpoint — snapshot and profile point at the transition
+                state.snapshot(model, target_depth, gf_low)
+                state.profile.append((round(state.runtime, 2), target_depth))
+            current_depth = target_depth
     state.snapshot(model, first_stop_depth, gf_low)
     state.profile.append((round(state.runtime, 2), first_stop_depth))
 
