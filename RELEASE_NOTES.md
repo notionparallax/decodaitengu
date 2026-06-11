@@ -7,6 +7,23 @@ Policy:
 - Accepted heading formats are `## vX.Y.Z` or `## X.Y.Z`.
 - The publish workflow validates this before building/publishing.
 
+## v1.3.1
+
+- Fix #45: switch to richest eligible gas during free ascent from bottom
+  to first stop, and during NDL ascent. Gas switch depths are now treated
+  as breakpoints alongside ascent-rate breakpoints, matching Subsurface
+  behaviour.
+
+## v1.3.0
+
+- Add experimental H2 (hydrogen) gas support (Hydreliox mixes).
+- Gas: new `h2` field; O2 ≤ 4% enforced when H2 > 0 (flammability limit).
+- TissueState: `h2_pressures` compartment loading via Schreiner equation.
+- DiveSummary: `max_pph2` tracking.
+- ZHL-16C/B: H2 half-times derived from He via diffusion-theory scaling
+  (factor ≈ 0.71). **EXPERIMENTAL — no validated coefficients exist.**
+- planning.py: H2 gas density, max_pph2 tracking, UserWarning when H2 present.
+
 ## v1.2.1
 
 - Fix NDL ascent path to step through ascent-rate breakpoints, recording
