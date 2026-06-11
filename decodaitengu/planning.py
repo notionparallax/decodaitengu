@@ -41,6 +41,7 @@ Example::
 """
 
 import math
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
@@ -71,6 +72,7 @@ def _ceil_to_3m(depth: float) -> float:
 _MW_O2 = 31.998
 _MW_N2 = 28.014
 _MW_HE = 4.003
+_MW_H2 = 2.016  # hydrogen (diatomic)
 # Ideal gas constant [L*bar/(mol*K)]
 _R = 0.083145
 # Body temperature [K] (37 degC) -- standard for dive gas density calculations
@@ -93,7 +95,8 @@ def _gas_density(gas: Gas, abs_p: float) -> float:
     f_o2 = gas.o2 / 100.0
     f_he = gas.he / 100.0
     f_n2 = gas.n2 / 100.0
-    mw_mix = f_o2 * _MW_O2 + f_n2 * _MW_N2 + f_he * _MW_HE
+    f_h2 = gas.h2 / 100.0
+    mw_mix = f_o2 * _MW_O2 + f_n2 * _MW_N2 + f_he * _MW_HE + f_h2 * _MW_H2
     return (mw_mix * abs_p) / (_R * _BODY_TEMP_K)
 
 
@@ -285,6 +288,7 @@ class _DiveState:
     track_enabled: bool = False
     surface_pressure: float = const.SURFACE_PRESSURE
     max_gas_density: float = 0.0
+    max_pph2: float = 0.0
 
     def track_gas(self, g: Gas, duration: float, avg_abs_p: float, sac: float) -> None:
         """Record gas consumed during a segment."""
@@ -504,6 +508,8 @@ def _bottom(
 
     state.profile.append((round(state.runtime, 2), depth))
     state.max_gas_density = max(state.max_gas_density, _gas_density(back_gas, abs_p_bottom))
+    if back_gas.h2 > 0.0:
+        state.max_pph2 = max(state.max_pph2, (back_gas.h2 / 100.0) * abs_p_bottom)
 
 
 def _ascend_with_deco(
@@ -659,6 +665,8 @@ def _ascend_with_deco(
             on_back_gas = False
 
         state.max_gas_density = max(state.max_gas_density, _gas_density(current_gas, abs_p_stop))
+        if current_gas.h2 > 0.0:
+            state.max_pph2 = max(state.max_pph2, (current_gas.h2 / 100.0) * abs_p_stop)
 
         # Wait at stop until we can ascend
         stop_time = 0.0
@@ -808,6 +816,19 @@ def plan_dive(
     if deco_gases is None:
         deco_gases = []
 
+    # Warn loudly if any gas contains H2 — these calculations are experimental
+    all_gases_for_check = [back_gas] + deco_gases
+    if any(g.h2 > 0.0 for g in all_gases_for_check):
+        warnings.warn(
+            "H2 (hydrogen) gas support is HIGHLY EXPERIMENTAL. "
+            "Decompression coefficients are derived from diffusion-theory scaling of He "
+            "half-times and use He a/b values as a proxy. "
+            "No validated empirical ZHL-16 H2 coefficient set is publicly available. "
+            "Do NOT use these results for actual dive planning.",
+            UserWarning,
+            stacklevel=2,
+        )
+
     ascent_profile = _normalize_ascent_profile(ascent_rate)
 
     # --- Validate and resolve ---
@@ -924,4 +945,5 @@ def plan_dive(
         back_gas_ascent_litres=round(back_gas_ascent_litres, 2),
         ceiling_profile=state.ceiling_profile,
         gas_pressure_profile=state.gas_pressure_profile,
+        max_pph2=round(state.max_pph2, 3),
     )

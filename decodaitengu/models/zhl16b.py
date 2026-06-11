@@ -22,9 +22,73 @@
 
 ZH-L16B-GF is the original Bühlmann model variant used for dive table
 calculations. Coefficients sourced from Erik Baker's gfdeco.f implementation.
+
+H2 coefficients are **EXPERIMENTAL**: half-times derived by scaling He half-times
+by √(M_H2/M_He) ≈ 0.7097 (diffusion theory); a/b values use He coefficients as a
+proxy. No validated empirical ZHL-16 H2 coefficient set is publicly available.
+These values are for research and estimation only — NOT for dive planning.
 """
 
 from .base import ZHL16GF, ModelParams
+
+# H2 half-times = He half-times × √(M_H2 / M_He) ≈ He × 0.7097
+# H2 a/b: He values used as proxy (no published empirical ZHL-16 H2 data).
+_H2_SCALE = 0.7097
+
+_ZHL16B_HE_HALF_LIFE = (
+    1.88,
+    3.02,
+    4.72,
+    6.99,
+    10.21,
+    14.48,
+    20.53,
+    29.11,
+    41.20,
+    55.19,
+    70.69,
+    90.34,
+    115.29,
+    147.42,
+    188.24,
+    240.03,
+)
+_ZHL16B_HE_A = (
+    1.6189,
+    1.3830,
+    1.1919,
+    1.0458,
+    0.9220,
+    0.8205,
+    0.7305,
+    0.6502,
+    0.5950,
+    0.5545,
+    0.5333,
+    0.5189,
+    0.5181,
+    0.5176,
+    0.5172,
+    0.5119,
+)
+_ZHL16B_HE_B = (
+    0.4770,
+    0.5747,
+    0.6527,
+    0.7223,
+    0.7582,
+    0.7957,
+    0.8279,
+    0.8553,
+    0.8757,
+    0.8903,
+    0.8997,
+    0.9073,
+    0.9122,
+    0.9171,
+    0.9217,
+    0.9267,
+)
 
 ZHL16B_PARAMS = ModelParams(
     n2_half_life=(
@@ -81,60 +145,12 @@ ZHL16B_PARAMS = ModelParams(
         0.9602,
         0.9653,
     ),
-    he_half_life=(
-        1.88,
-        3.02,
-        4.72,
-        6.99,
-        10.21,
-        14.48,
-        20.53,
-        29.11,
-        41.20,
-        55.19,
-        70.69,
-        90.34,
-        115.29,
-        147.42,
-        188.24,
-        240.03,
-    ),
-    he_a=(
-        1.6189,
-        1.3830,
-        1.1919,
-        1.0458,
-        0.9220,
-        0.8205,
-        0.7305,
-        0.6502,
-        0.5950,
-        0.5545,
-        0.5333,
-        0.5189,
-        0.5181,
-        0.5176,
-        0.5172,
-        0.5119,
-    ),
-    he_b=(
-        0.4770,
-        0.5747,
-        0.6527,
-        0.7223,
-        0.7582,
-        0.7957,
-        0.8279,
-        0.8553,
-        0.8757,
-        0.8903,
-        0.8997,
-        0.9073,
-        0.9122,
-        0.9171,
-        0.9217,
-        0.9267,
-    ),
+    he_half_life=_ZHL16B_HE_HALF_LIFE,
+    he_a=_ZHL16B_HE_A,
+    he_b=_ZHL16B_HE_B,
+    h2_half_life=tuple(round(hl * _H2_SCALE, 3) for hl in _ZHL16B_HE_HALF_LIFE),
+    h2_a=_ZHL16B_HE_A,
+    h2_b=_ZHL16B_HE_B,
 )
 
 

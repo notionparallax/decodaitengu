@@ -681,3 +681,115 @@ class TestSubsurfaceComparison:
             "Expected at least two profile points at 6m (rate-change breakpoint), "
             f"got: {result.profile}"
         )
+
+
+class TestH2Gas:
+    """Tests for hydrogen (H2) gas support.
+
+    .. warning::
+        H2 decompression is EXPERIMENTAL. Coefficients are derived from
+        diffusion-theory scaling of He half-times (factor ≈ 0.71) with He a/b
+        values used as a proxy. Do NOT use for actual dive planning.
+    """
+
+    def test_hydreliox_n2_fraction(self):
+        """N2 = 100 - O2 - He - H2."""
+        gas = Gas(o2=2, he=30, h2=60)
+        assert gas.n2 == pytest.approx(8.0)
+
+    def test_h2_repr(self):
+        gas = Gas(o2=2, he=20, h2=70)
+        assert "Hydreliox" in repr(gas)
+        assert "2/20/70" in repr(gas)
+
+    def test_h2_flammability_limit(self):
+        """O2 > 4% with H2 present must raise ValueError."""
+        with pytest.raises(ValueError, match="combustion"):
+            Gas(o2=5, he=20, h2=70)
+
+    def test_h2_flammability_at_limit(self):
+        """O2 = 4% with H2 should be accepted."""
+        gas = Gas(o2=4, he=20, h2=70)
+        assert gas.o2 == 4.0
+        assert gas.h2 == 70.0
+
+    def test_h2_zero_is_allowed_any_o2(self):
+        """Standard gases with h2=0 should not be affected by flammability check."""
+        gas = Gas(o2=21, he=0, h2=0)
+        assert gas.n2 == pytest.approx(79.0)
+
+    def test_h2_fractions_exceed_100(self):
+        with pytest.raises(ValueError, match="must not exceed 100%"):
+            Gas(o2=4, he=50, h2=60)
+
+    def test_gas_density_lower_with_h2(self):
+        """H2 has lower MW than N2/He so density should drop."""
+        # Compare Hydreliox 2/30/60 vs Tx2/30 (N2 replaces H2)
+        h2_gas = Gas(o2=2, he=30, h2=60)
+        n2_gas = Gas(o2=2, he=30, h2=0)  # balance is N2
+        abs_p = 6.0  # ~50m
+        assert _gas_density(h2_gas, abs_p) < _gas_density(n2_gas, abs_p)
+
+    def test_h2_tissue_loading_faster_than_he(self):
+        """H2 diffuses faster than He so tissue loading should be higher."""
+        from decodaitengu.models import ZHL16C
+
+        model = ZHL16C(gf_low=0.3, gf_high=0.85)
+        tissues_init = model.init(1.01325)
+        abs_p = 6.01325  # ~50m
+        h2_gas = Gas(o2=2, he=0, h2=98)
+        he_gas = Gas(o2=2, he=98, h2=0)
+        t_h2 = model.load(tissues_init, abs_p, 20.0, h2_gas, 0.0)
+        t_he = model.load(tissues_init, abs_p, 20.0, he_gas, 0.0)
+        # H2 loads the fastest compartment more than He due to shorter half-time
+        assert t_h2.h2_pressures[0] > t_he.he_pressures[0]
+
+    def test_plan_dive_hydreliox_emits_warning(self):
+        """plan_dive with H2 gas must emit a UserWarning."""
+        import warnings
+
+        hydreliox = Gas(o2=2, he=20, h2=70)
+        deco_gases = [
+            Gas(o2=50, switch_depth=21, label="lean"),
+            Gas(o2=100, switch_depth=6, label="rich"),
+        ]
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            # gf=99/99 with deco gases keeps deco time minimal
+            result = plan_dive(
+                depth=30,
+                bottom_time=15,
+                back_gas=hydreliox,
+                deco_gases=deco_gases,
+                gf=(99, 99),
+            )
+        assert any("EXPERIMENTAL" in str(warning.message) for warning in w)
+        assert isinstance(result.max_pph2, float)
+        assert result.max_pph2 > 0.0
+
+    def test_plan_dive_hydreliox_with_deco_gases(self):
+        """Hydreliox dive with deco gases produces stops and tracks H2."""
+        import warnings
+
+        back_gas = Gas(o2=2, he=20, h2=70)
+        deco_gases = [
+            Gas(o2=50, switch_depth=21, label="lean"),
+            Gas(o2=100, switch_depth=6, label="rich"),
+        ]
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            result = plan_dive(
+                depth=30,
+                bottom_time=15,
+                back_gas=back_gas,
+                deco_gases=deco_gases,
+                gf=(50, 70),
+            )
+        assert result.stops, "Expected deco stops for GF 50/70 hydreliox dive"
+        assert result.max_pph2 > 0
+        assert result.total_deco_time > 0
+
+    def test_plan_dive_no_h2_max_pph2_is_zero(self):
+        """Dives without H2 must return max_pph2 == 0."""
+        result = plan_dive(depth=40, bottom_time=25, back_gas=Gas(o2=21, he=35))
+        assert result.max_pph2 == 0.0

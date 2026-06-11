@@ -47,7 +47,7 @@ class TestGasValidation:
             Gas(o2=21, he=101)
 
     def test_o2_plus_he_over_100(self):
-        with pytest.raises(ValueError, match="O2 \\+ He must not exceed 100%"):
+        with pytest.raises(ValueError, match="O2 \\+ He \\+ H2 must not exceed 100%"):
             Gas(o2=80, he=30)
 
     def test_o2_plus_he_exactly_100(self):

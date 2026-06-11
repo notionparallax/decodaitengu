@@ -22,6 +22,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
+from itertools import zip_longest
 
 from . import const
 
@@ -45,14 +46,27 @@ class Gas:
 
     :param o2: O2 percentage (0-100).
     :param he: Helium percentage (0-100).
-    :param n2: Nitrogen percentage (computed as 100 - o2 - he).
+    :param h2: Hydrogen percentage (0-100). **EXPERIMENTAL** — see warning below.
+    :param n2: Nitrogen percentage (computed as 100 - o2 - he - h2).
     :param switch_depth: Depth at which to switch to this gas [m] (>= 0).
     :param label: Optional label for the gas mix.
     :raises ValueError: If fractions are out of range or sum exceeds 100%.
+
+    .. warning::
+        Hydrogen (H2) gas support is **highly experimental**. H2 decompression
+        coefficients are derived from diffusion-theory scaling of He half-times
+        (factor ≈ √(M_H2/M_He) ≈ 0.71) and use He a/b values as a proxy.
+        No validated empirical ZHL-16 H2 coefficient set is publicly available.
+        Do **NOT** use H2 calculations for actual dive planning.
+
+    .. note::
+        H2 mixes (hydreliox) require O2 ≤ 4% to prevent combustion risk.
+        This limit is enforced at construction time.
     """
 
     o2: float
     he: float = 0.0
+    h2: float = 0.0
     switch_depth: float = 0.0
     label: str = ""
 
@@ -62,20 +76,30 @@ class Gas:
             raise ValueError(f"O2 must be between 0 and 100, got {self.o2}")
         if not (0.0 <= self.he <= 100.0):
             raise ValueError(f"He must be between 0 and 100, got {self.he}")
-        if self.o2 + self.he > 100.0:
+        if not (0.0 <= self.h2 <= 100.0):
+            raise ValueError(f"H2 must be between 0 and 100, got {self.h2}")
+        if self.o2 + self.he + self.h2 > 100.0:
             raise ValueError(
-                f"O2 + He must not exceed 100%, got {self.o2} + {self.he} = {self.o2 + self.he}"
+                f"O2 + He + H2 must not exceed 100%, "
+                f"got {self.o2} + {self.he} + {self.h2} = {self.o2 + self.he + self.h2}"
             )
         if self.switch_depth < 0.0:
             raise ValueError(f"switch_depth must be >= 0, got {self.switch_depth}")
+        if self.h2 > 0.0 and self.o2 > 4.0:
+            raise ValueError(
+                f"H2 mixes require O2 <= 4% to prevent combustion risk, got O2={self.o2}%. "
+                f"Reduce O2 fraction or remove H2."
+            )
 
     @property
     def n2(self) -> float:
         """Nitrogen percentage."""
-        return 100.0 - self.o2 - self.he
+        return 100.0 - self.o2 - self.he - self.h2
 
     def __repr__(self) -> str:
-        if self.he > 0:
+        if self.h2 > 0:
+            return f"Gas(Hydreliox {self.o2:.0f}/{self.he:.0f}/{self.h2:.0f})"
+        elif self.he > 0:
             return f"Gas(Tx {self.o2:.0f}/{self.he:.0f})"
         elif self.o2 == 21:
             return "Gas(Air)"
@@ -116,15 +140,23 @@ class TissueState:
 
     :param n2_pressures: Nitrogen pressure in each compartment [bar].
     :param he_pressures: Helium pressure in each compartment [bar].
+    :param h2_pressures: Hydrogen pressure in each compartment [bar].
+        Defaults to zero (no hydrogen loading). **EXPERIMENTAL**.
     """
 
     n2_pressures: tuple[float, ...]
     he_pressures: tuple[float, ...]
+    h2_pressures: tuple[float, ...] = field(default_factory=tuple)
 
     @property
     def total_pressures(self) -> tuple[float, ...]:
         """Combined inert gas pressure in each compartment."""
-        return tuple(n2 + he for n2, he in zip(self.n2_pressures, self.he_pressures, strict=True))
+        return tuple(
+            n2 + he + h2
+            for n2, he, h2 in zip_longest(
+                self.n2_pressures, self.he_pressures, self.h2_pressures, fillvalue=0.0
+            )
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,6 +253,8 @@ class DiveSummary:
         each stop, surface arrival.
     :param back_gas_ascent_litres: Litres of back gas consumed during ascent from leaving
         bottom to first deco gas switch. Used to calculate min gas / turn pressure.
+    :param max_pph2: Maximum hydrogen partial pressure encountered during the dive [bar].
+        Only non-zero for dives using H2-containing gases. **EXPERIMENTAL**.
     """
 
     runtime: float
@@ -240,3 +274,4 @@ class DiveSummary:
     # (time_min, diver_depth_m, ceiling_depth_m) — sampled at each profile waypoint
     gas_pressure_profile: dict[str, list[tuple[float, float]]] = field(default_factory=dict)
     # gas_label -> [(time_min, bar_remaining), ...]
+    max_pph2: float = 0.0
