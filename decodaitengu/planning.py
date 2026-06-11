@@ -566,18 +566,30 @@ def _ascend_with_deco(
                 ndl_hi = ndl_mid
         computed_ndl = round(ndl_lo, 0)
 
-        # Ascend directly
-        _apply_ascent_to_state(
-            state,
-            model,
-            depth,
-            0.0,
-            current_gas,
-            ascent_profile,
-            sac_deco,
-        )
-        state.snapshot(model, 0.0, gf_high)
-        state.profile.append((round(state.runtime, 2), 0.0))
+        # Ascend in 1-minute steps, stopping at rate-change breakpoints, so
+        # that the depth profile and ceiling profile have enough points to
+        # render correctly (correct per-segment slope, smooth ceiling curve).
+        current_depth = float(depth)
+        while current_depth > 0.0:
+            rate = _ascent_rate_at_depth(ascent_profile, current_depth)
+            next_break = _next_ascent_breakpoint(ascent_profile, current_depth, 0.0)
+            one_min_target = max(0.0, current_depth - rate)
+            if next_break is not None and next_break > one_min_target:
+                target_depth = next_break
+            else:
+                target_depth = one_min_target
+            _apply_ascent_to_state(
+                state,
+                model,
+                current_depth,
+                target_depth,
+                current_gas,
+                ascent_profile,
+                sac_deco,
+            )
+            state.snapshot(model, target_depth, gf_high)
+            state.profile.append((round(state.runtime, 2), target_depth))
+            current_depth = target_depth
 
         return [], 0.0, computed_ndl, {}, 0.0
 
