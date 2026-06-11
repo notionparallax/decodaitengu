@@ -179,6 +179,15 @@ def _next_ascent_breakpoint(
     return max(crossed) if crossed else None
 
 
+def _richest_eligible_gas(gases: list, depth: float):
+    """Return the richest (highest O2%) gas whose switch_depth >= depth."""
+    best = gases[0]
+    for g in gases[1:]:
+        if g.switch_depth >= depth and g.o2 > best.o2:
+            best = g
+    return best
+
+
 def _iter_ascent_segments(
     start_depth: float,
     target_depth: float,
@@ -532,6 +541,7 @@ def _ascend_with_deco(
     sp = state.surface_pressure
     abs_p_bottom = _depth_to_pressure(depth, sp)
     all_gases = [back_gas] + sorted(deco_gases, key=lambda g: g.switch_depth, reverse=True)
+    _switch_depths = {g.switch_depth for g in all_gases[1:]}
     current_gas = back_gas
 
     # Determine ceiling
@@ -579,11 +589,16 @@ def _ascend_with_deco(
         while current_depth > 0.0:
             rate = _ascent_rate_at_depth(ascent_profile, current_depth)
             next_break = _next_ascent_breakpoint(ascent_profile, current_depth, 0.0)
+            next_switch = max(
+                (d for d in _switch_depths if 0.0 < d < current_depth),
+                default=None,
+            )
             one_min_target = max(0.0, current_depth - rate)
-            if next_break is not None and next_break > one_min_target:
-                target_depth = next_break
-            else:
-                target_depth = one_min_target
+            candidates = [
+                b for b in (next_break, next_switch) if b is not None and b > one_min_target
+            ]
+            target_depth = max(candidates) if candidates else one_min_target
+            current_gas = _richest_eligible_gas(all_gases, current_depth)
             _apply_ascent_to_state(
                 state,
                 model,
@@ -604,15 +619,21 @@ def _ascend_with_deco(
     stops: list[DecoStop] = []
     stop_runtimes: dict[float, float] = {}
     back_gas_ascent_litres = 0.0
-    on_back_gas = True
 
-    # Free ascent to first stop — step at rate-change breakpoints so each
-    # segment is drawn at the correct slope in the profile graph.
+    # Free ascent to first stop — step at rate-change and gas-switch breakpoints.
     if depth > first_stop_depth:
         current_depth = float(depth)
         while current_depth > first_stop_depth:
-            next_break = _next_ascent_breakpoint(ascent_profile, current_depth, first_stop_depth)
-            target_depth = next_break if next_break is not None else first_stop_depth
+            next_rate_break = _next_ascent_breakpoint(
+                ascent_profile, current_depth, first_stop_depth
+            )
+            next_switch = max(
+                (d for d in _switch_depths if first_stop_depth < d < current_depth),
+                default=None,
+            )
+            candidates = [b for b in (next_rate_break, next_switch) if b is not None]
+            target_depth = max(candidates) if candidates else first_stop_depth
+            current_gas = _richest_eligible_gas(all_gases, current_depth)
             _, pressure_factor_sum = _apply_ascent_to_state(
                 state,
                 model,
@@ -622,12 +643,16 @@ def _ascend_with_deco(
                 ascent_profile,
                 sac_deco,
             )
-            back_gas_ascent_litres += sac_bottom * pressure_factor_sum
+            if current_gas is back_gas:
+                back_gas_ascent_litres += sac_bottom * pressure_factor_sum
             if target_depth > first_stop_depth:
                 # Intermediate breakpoint — snapshot and profile point at the transition
                 state.snapshot(model, target_depth, gf_low)
                 state.profile.append((round(state.runtime, 2), target_depth))
             current_depth = target_depth
+    # Ensure current_gas is correct at first_stop_depth for the stop loop
+    current_gas = _richest_eligible_gas(all_gases, first_stop_depth)
+    on_back_gas = current_gas is back_gas
     state.snapshot(model, first_stop_depth, gf_low)
     state.profile.append((round(state.runtime, 2), first_stop_depth))
 

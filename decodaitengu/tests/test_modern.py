@@ -641,13 +641,12 @@ class TestSubsurfaceComparison:
 
         Validated against Subsurface 6.0.5504 on 2026-06-11.
 
-        Subsurface: NDL dive, no deco stops, runtime 21min.
-        Our model:  9m x 1 min stop (deco dive), runtime 21.5 min.
+        Subsurface: NDL dive, no deco stops, runtime 21 min.
+        Our model:  9m x 1 min stop, runtime ~20.5 min.
 
-        Difference: Subsurface switches to EAN50 at 21m during the free ascent;
-        our engine stays on back gas until first_stop_depth.  The extra N2 load
-        on Tx22/27 during the 51→21m free ascent is enough to require a 1-min
-        stop at 9m.
+        Our engine now switches to EAN50 at 21m during the free ascent (fix for
+        issue #45).  A marginal 9m stop remains due to model conservatism, but
+        the ~1 min runtime gap vs the buggy back-gas-only ascent is eliminated.
 
         The primary regression purpose of this test is to confirm that the
         segmented ascent (10 m/min below 6m, 1 m/min above 6m) produces the
@@ -669,9 +668,8 @@ class TestSubsurfaceComparison:
             sac_bottom=20,
             sac_deco=20,
         )
-        # Regression: our engine produces a 9m stop (back-gas free ascent difference vs Subsurface)
         self._check_stops(result, {9.0: 1})
-        assert result.runtime == pytest.approx(21.5, abs=0.5)
+        assert result.runtime == pytest.approx(20.5, abs=0.5)
 
         # The 6m breakpoint must appear as a distinct pair of profile points so
         # that the two ascent rate segments are drawn at their correct individual
