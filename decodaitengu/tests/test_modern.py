@@ -635,3 +635,49 @@ class TestSubsurfaceComparison:
             ascent_rate=self.ASCENT_RATE,
         )
         self._check_stops(result, {18.0: 1, 15.0: 1, 12.0: 2, 9.0: 3, 6.0: 5, 3.0: 8})
+
+    def test_51m_tx22_27_bounce_segmented_ascent(self):
+        """51m/10min bounce, Tx22/27 + EAN50@21m + O2@6m, GF 50/80, segmented ascent.
+
+        Validated against Subsurface 6.0.5504 on 2026-06-11.
+
+        Subsurface: NDL dive, no deco stops, runtime 21min.
+        Our model:  9m x 1 min stop (deco dive), runtime 21.5 min.
+
+        Difference: Subsurface switches to EAN50 at 21m during the free ascent;
+        our engine stays on back gas until first_stop_depth.  The extra N2 load
+        on Tx22/27 during the 51→21m free ascent is enough to require a 1-min
+        stop at 9m.
+
+        The primary regression purpose of this test is to confirm that the
+        segmented ascent (10 m/min below 6m, 1 m/min above 6m) produces the
+        correct per-segment slope in the depth profile: specifically, that a
+        6m breakpoint exists as a distinct profile point rather than the two
+        segments being merged into one averaged line.
+        """
+        result = plan_dive(
+            depth=51,
+            bottom_time=10,
+            back_gas=Gas(o2=22, he=27),
+            deco_gases=[
+                Gas(o2=50, switch_depth=21.0),
+                Gas(o2=100, switch_depth=6.0),
+            ],
+            gf=(50, 80),
+            descent_rate=self.DESCENT_RATE,
+            ascent_rate=[(6, 10.0), (0, 1.0)],
+            sac_bottom=20,
+            sac_deco=20,
+        )
+        # Regression: our engine produces a 9m stop (back-gas free ascent difference vs Subsurface)
+        self._check_stops(result, {9.0: 1})
+        assert result.runtime == pytest.approx(21.5, abs=0.5)
+
+        # The 6m breakpoint must appear as a distinct pair of profile points so
+        # that the two ascent rate segments are drawn at their correct individual
+        # slopes rather than blended into one averaged line.
+        depths_at_6m = [d for _, d in result.profile if d == 6.0]
+        assert len(depths_at_6m) >= 2, (
+            "Expected at least two profile points at 6m (rate-change breakpoint), "
+            f"got: {result.profile}"
+        )
