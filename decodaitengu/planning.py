@@ -40,6 +40,7 @@ Example::
     print(result.cns_percent)
 """
 
+import dataclasses
 import math
 import warnings
 from collections.abc import Mapping, Sequence
@@ -180,12 +181,27 @@ def _next_ascent_breakpoint(
 
 
 def _richest_eligible_gas(gases: list, depth: float):
-    """Return the richest (highest O2%) gas whose switch_depth >= depth."""
-    best = gases[0]
-    for g in gases[1:]:
-        if g.switch_depth >= depth and g.o2 > best.o2:
-            best = g
-    return best
+    """Return the richest ascent-eligible gas whose switch_depth >= depth."""
+    eligible = [g for g in gases if g.use_on_ascent and g.switch_depth >= depth]
+    if eligible:
+        return max(eligible, key=lambda g: g.o2)
+    # Fallback: richest ascent-eligible gas regardless of switch_depth
+    ascent_gases = [g for g in gases if g.use_on_ascent]
+    return max(ascent_gases, key=lambda g: g.switch_depth) if ascent_gases else gases[0]
+
+
+def _richest_eligible_descent_gas(gases: list, depth: float):
+    """Return the richest descent-eligible gas at the given depth.
+
+    Uses the END depth of the descent segment to select the gas, ensuring
+    a gas-switch breakpoint at the correct depth.
+    """
+    eligible = [g for g in gases if g.use_on_descent and g.switch_depth >= depth]
+    if eligible:
+        return max(eligible, key=lambda g: g.o2)
+    # Fallback: deepest descent gas
+    descent_gases = [g for g in gases if g.use_on_descent]
+    return max(descent_gases, key=lambda g: g.switch_depth) if descent_gases else gases[0]
 
 
 def _iter_ascent_segments(
@@ -328,7 +344,6 @@ def _validate_inputs(
     sac_bottom: float,
     sac_deco: float,
     gf: tuple[float, float],
-    deco_gases: list[Gas],
     surface_pressure: float,
     max_po2: float,
 ) -> tuple[float, float]:
@@ -362,24 +377,6 @@ def _validate_inputs(
     if gf_low_pct > gf_high_pct:
         raise ValueError(f"gf_low must be <= gf_high, got ({gf_low_pct}, {gf_high_pct})")
 
-    # Validate deco gas switch depths
-    for i, g in enumerate(deco_gases):
-        if g.switch_depth <= 0:
-            raise ValueError(f"deco_gases[{i}] ({g}) must have a positive switch_depth")
-        if g.switch_depth >= depth:
-            raise ValueError(
-                f"deco_gases[{i}] switch_depth ({g.switch_depth}m) must be less than "
-                f"dive depth ({depth}m)"
-            )
-        # Validate PO2 at switch depth (0.01 bar tolerance for floating-point)
-        abs_p_at_switch = g.switch_depth * const.METER_TO_BAR + surface_pressure
-        po2_at_switch = (g.o2 / 100.0) * abs_p_at_switch
-        if po2_at_switch > max_po2 + 0.01:
-            raise ValueError(
-                f"deco_gases[{i}] ({g}) has PO2 {po2_at_switch:.2f} bar at switch depth "
-                f"{g.switch_depth}m, which exceeds max_po2={max_po2} bar"
-            )
-
     # Validate surface pressure (reasonable range for altitude diving)
     if not math.isfinite(surface_pressure) or surface_pressure <= 0:
         raise ValueError(
@@ -392,6 +389,44 @@ def _validate_inputs(
         )
 
     return gf_low_pct / 100.0, gf_high_pct / 100.0
+
+
+def _validate_gases(
+    all_gases: list[Gas],
+    depth: float,
+    surface_pressure: float,
+    max_po2: float,
+) -> None:
+    """Validate the resolved gas list.
+
+    :raises ValueError: If gas list is invalid.
+    """
+    descent_gases = [g for g in all_gases if g.use_on_descent]
+    if not descent_gases:
+        raise ValueError("At least one gas must have use_on_descent=True (the back gas).")
+    eligible_at_bottom = [g for g in descent_gases if g.switch_depth >= depth]
+    if not eligible_at_bottom:
+        raise ValueError(
+            f"No descent gas covers dive depth {depth}m. "
+            f"Set switch_depth >= {depth} on the back gas."
+        )
+
+    ascent_gases = [g for g in all_gases if not g.use_on_descent]
+    for i, g in enumerate(ascent_gases):
+        if g.switch_depth <= 0:
+            raise ValueError(f"Deco/ascent gas [{i}] ({g}) must have a positive switch_depth")
+        if g.switch_depth >= depth:
+            raise ValueError(
+                f"Deco/ascent gas [{i}] switch_depth ({g.switch_depth}m) must be less than "
+                f"dive depth ({depth}m)"
+            )
+        abs_p_at_switch = g.switch_depth * const.METER_TO_BAR + surface_pressure
+        po2_at_switch = (g.o2 / 100.0) * abs_p_at_switch
+        if po2_at_switch > max_po2 + 0.01:
+            raise ValueError(
+                f"Deco/ascent gas [{i}] ({g}) has PO2 {po2_at_switch:.2f} bar at switch depth "
+                f"{g.switch_depth}m, which exceeds max_po2={max_po2} bar"
+            )
 
 
 def _resolve_model(
@@ -413,80 +448,79 @@ def _descend(
     model: ZHL16GF,
     depth: float,
     descent_rate: float,
-    back_gas: Gas,
+    all_gases: list[Gas],
     sac_bottom: float,
     descent_stops: list[tuple[float, float]] | None,
 ) -> float:
     """Execute the descent phase. Returns total descent time.
 
+    Selects the richest eligible descent gas at each depth segment,
+    switching automatically at gas switch_depth breakpoints.
+
     Modifies state in place (tissues, trackers, profile, gas consumption).
     """
     descent_rate_bar = descent_rate * const.METER_TO_BAR
+    descent_gases = [g for g in all_gases if g.use_on_descent]
 
-    # Build ordered list of descent waypoints
-    ordered_stops: list[tuple[float, float]] = []
+    # Gas switch breakpoints on descent (where eligible gas may change)
+    gas_switch_depths = {g.switch_depth for g in descent_gases if 0.0 < g.switch_depth < depth}
+
+    # Descent stops: depth -> stop_time (filtered to valid range)
+    stops_dict: dict[float, float] = {}
     if descent_stops:
-        ordered_stops = sorted(
-            [(float(d), float(t)) for d, t in descent_stops if 0 < d < depth],
-            key=lambda x: x[0],
-        )
+        for d, t in descent_stops:
+            if 0.0 < float(d) < depth:
+                stops_dict[float(d)] = float(t)
+
+    # All waypoints in ascending depth order
+    waypoints = sorted(gas_switch_depths | set(stops_dict.keys()) | {depth})
 
     prev_depth = 0.0
     descent_time = 0.0
 
-    for stop_depth, stop_time in ordered_stops:
-        seg_time = (stop_depth - prev_depth) / descent_rate
+    for wp_depth in waypoints:
+        if wp_depth <= prev_depth:
+            continue
+
+        # Select gas for this segment using END depth — ensures switch at correct boundary
+        current_gas = _richest_eligible_descent_gas(descent_gases, wp_depth)
+
+        # Descend segment
+        seg_time = (wp_depth - prev_depth) / descent_rate
         seg_start_p = _depth_to_pressure(prev_depth, state.surface_pressure)
         state.tissues = model.load(
-            state.tissues, seg_start_p, seg_time, back_gas, descent_rate_bar
+            state.tissues, seg_start_p, seg_time, current_gas, descent_rate_bar
         )
         avg_seg_p = (
             _depth_to_pressure(prev_depth, state.surface_pressure)
-            + _depth_to_pressure(stop_depth, state.surface_pressure)
+            + _depth_to_pressure(wp_depth, state.surface_pressure)
         ) / 2.0
-        po2_seg = (back_gas.o2 / 100.0) * avg_seg_p
+        po2_seg = (current_gas.o2 / 100.0) * avg_seg_p
         state.cns_tracker.update(po2_seg, seg_time)
         state.otu_tracker.update(po2_seg, seg_time)
         if state.track_enabled:
-            state.track_gas(back_gas, seg_time, avg_seg_p, sac_bottom)
+            state.track_gas(current_gas, seg_time, avg_seg_p, sac_bottom)
         state.runtime += seg_time
         descent_time += seg_time
-        state.snapshot(model, stop_depth, model.gf_low)
-        state.profile.append((round(state.runtime, 2), stop_depth))
+        state.snapshot(model, wp_depth, model.gf_low)
+        state.profile.append((round(state.runtime, 2), wp_depth))
 
-        # Stop at this depth
-        stop_p = _depth_to_pressure(stop_depth, state.surface_pressure)
-        po2_stop = (back_gas.o2 / 100.0) * stop_p
-        state.tissues = model.load(state.tissues, stop_p, stop_time, back_gas, 0.0)
-        state.cns_tracker.update(po2_stop, stop_time)
-        state.otu_tracker.update(po2_stop, stop_time)
-        if state.track_enabled:
-            state.track_gas(back_gas, stop_time, stop_p, sac_bottom)
-        state.runtime += stop_time
-        descent_time += stop_time
-        state.snapshot(model, stop_depth, model.gf_low)
-        state.profile.append((round(state.runtime, 2), stop_depth))
-        prev_depth = stop_depth
+        # Optional stop at this waypoint
+        if wp_depth in stops_dict:
+            stop_time = stops_dict[wp_depth]
+            stop_p = _depth_to_pressure(wp_depth, state.surface_pressure)
+            po2_stop = (current_gas.o2 / 100.0) * stop_p
+            state.tissues = model.load(state.tissues, stop_p, stop_time, current_gas, 0.0)
+            state.cns_tracker.update(po2_stop, stop_time)
+            state.otu_tracker.update(po2_stop, stop_time)
+            if state.track_enabled:
+                state.track_gas(current_gas, stop_time, stop_p, sac_bottom)
+            state.runtime += stop_time
+            descent_time += stop_time
+            state.snapshot(model, wp_depth, model.gf_low)
+            state.profile.append((round(state.runtime, 2), wp_depth))
 
-    # Final descent segment to target depth
-    final_seg_time = (depth - prev_depth) / descent_rate
-    seg_start_p = _depth_to_pressure(prev_depth, state.surface_pressure)
-    state.tissues = model.load(
-        state.tissues, seg_start_p, final_seg_time, back_gas, descent_rate_bar
-    )
-    avg_descent_pressure = (
-        _depth_to_pressure(prev_depth, state.surface_pressure)
-        + _depth_to_pressure(depth, state.surface_pressure)
-    ) / 2.0
-    po2_descent = (back_gas.o2 / 100.0) * avg_descent_pressure
-    state.cns_tracker.update(po2_descent, final_seg_time)
-    state.otu_tracker.update(po2_descent, final_seg_time)
-    if state.track_enabled:
-        state.track_gas(back_gas, final_seg_time, avg_descent_pressure, sac_bottom)
-    state.runtime += final_seg_time
-    descent_time += final_seg_time
-    state.snapshot(model, depth, model.gf_low)
-    state.profile.append((round(state.runtime, 2), depth))
+        prev_depth = wp_depth
 
     return descent_time
 
@@ -526,7 +560,7 @@ def _ascend_with_deco(
     model: ZHL16GF,
     depth: float,
     back_gas: Gas,
-    deco_gases: list[Gas],
+    all_gases: list[Gas],
     ascent_profile: AscentProfile,
     last_stop_depth: float,
     sac_bottom: float,
@@ -540,8 +574,9 @@ def _ascend_with_deco(
     """
     sp = state.surface_pressure
     abs_p_bottom = _depth_to_pressure(depth, sp)
-    all_gases = [back_gas] + sorted(deco_gases, key=lambda g: g.switch_depth, reverse=True)
-    _switch_depths = {g.switch_depth for g in all_gases[1:]}
+    # Only ascent-eligible gases participate in ascent gas selection
+    ascent_gases = [g for g in all_gases if g.use_on_ascent]
+    _switch_depths = {g.switch_depth for g in ascent_gases if 0.0 < g.switch_depth < depth}
     current_gas = back_gas
 
     # Determine ceiling
@@ -598,7 +633,7 @@ def _ascend_with_deco(
                 b for b in (next_break, next_switch) if b is not None and b > one_min_target
             ]
             target_depth = max(candidates) if candidates else one_min_target
-            current_gas = _richest_eligible_gas(all_gases, current_depth)
+            current_gas = _richest_eligible_gas(ascent_gases, current_depth)
             _apply_ascent_to_state(
                 state,
                 model,
@@ -633,7 +668,7 @@ def _ascend_with_deco(
             )
             candidates = [b for b in (next_rate_break, next_switch) if b is not None]
             target_depth = max(candidates) if candidates else first_stop_depth
-            current_gas = _richest_eligible_gas(all_gases, current_depth)
+            current_gas = _richest_eligible_gas(ascent_gases, current_depth)
             _, pressure_factor_sum = _apply_ascent_to_state(
                 state,
                 model,
@@ -651,7 +686,7 @@ def _ascend_with_deco(
                 state.profile.append((round(state.runtime, 2), target_depth))
             current_depth = target_depth
     # Ensure current_gas is correct at first_stop_depth for the stop loop
-    current_gas = _richest_eligible_gas(all_gases, first_stop_depth)
+    current_gas = _richest_eligible_gas(ascent_gases, first_stop_depth)
     on_back_gas = current_gas is back_gas
     state.snapshot(model, first_stop_depth, gf_low)
     state.profile.append((round(state.runtime, 2), first_stop_depth))
@@ -678,13 +713,8 @@ def _ascend_with_deco(
             next_gf = gf_high
         next_gf = min(next_gf, gf_high)
 
-        # Gas switch — pick richest O2 eligible gas
-        best_gas = current_gas
-        for g in all_gases[1:]:
-            if g.switch_depth >= stop_depth and g.o2 > best_gas.o2:
-                best_gas = g
-        if best_gas != current_gas:
-            current_gas = best_gas
+        # Gas switch — pick richest ascent-eligible gas at this stop
+        current_gas = _richest_eligible_gas(ascent_gases, stop_depth)
 
         if current_gas != back_gas and on_back_gas:
             on_back_gas = False
@@ -784,6 +814,7 @@ def plan_dive(
     bottom_time: float,
     back_gas: Gas | None = None,
     deco_gases: list[Gas] | None = None,
+    gases: list[Gas] | None = None,
     gf: tuple[float, float] = (30, 85),
     descent_rate: float = 20.0,
     ascent_rate: AscentRateInput = 10.0,
@@ -795,6 +826,7 @@ def plan_dive(
     sac_deco: float = 17.0,
     back_cylinder: Cylinder | None = None,
     deco_cylinders: list[Cylinder] | None = None,
+    cylinders: list[Cylinder] | None = None,
     descent_stops: list[tuple[float, float]] | None = None,
     max_po2: float = 1.61,
     max_deco_time: float = 1440.0,
@@ -805,10 +837,37 @@ def plan_dive(
     decompression model, runs the calculation, and returns all commonly
     needed results in a single call.
 
+    **Unified gas list API** (preferred)::
+
+        plan_dive(
+            depth=80,
+            bottom_time=20,
+            gases=[
+                Gas(o2=21,  switch_depth=40, use_on_descent=True, use_on_ascent=False, label='travel'),
+                Gas(o2=4, he=2, h2=90, switch_depth=80, use_on_descent=True, label='back'),
+                Gas(o2=50,  switch_depth=21, label='lean'),
+                Gas(o2=100, switch_depth=6,  label='rich'),
+            ],
+            cylinders=[Cylinder(12, 230), Cylinder(24.4, 230), Cylinder(11.1, 200), Cylinder(11.1, 200)],
+        )
+
+    **Legacy API** (backward compatible)::
+
+        plan_dive(
+            depth=50,
+            bottom_time=25,
+            back_gas=Gas(21, 35),
+            deco_gases=[Gas(50, 0, switch_depth=21), Gas(100, 0, switch_depth=6)],
+        )
+
     :param depth: Maximum dive depth [m].
     :param bottom_time: Bottom time [min] (from surface to leaving bottom).
-    :param back_gas: Back gas mix. Default is Air (21/0).
-    :param deco_gases: List of decompression gas mixes with switch depths set.
+    :param back_gas: **Legacy** back gas mix. Use ``gases`` instead for new code.
+    :param deco_gases: **Legacy** decompression gas mixes. Use ``gases`` instead.
+    :param gases: Unified gas list. Each ``Gas`` with ``use_on_descent=True`` is used
+        on descent; each with ``use_on_ascent=True`` (default) is used on ascent/deco.
+        Set ``use_on_ascent=False`` for travel-only gases. Cannot be combined with
+        ``back_gas`` or ``deco_gases``.
     :param gf: Gradient factors as (low, high) percentages in range (0, 100].
         Example: (30, 85). GF low must be <= GF high.
     :param descent_rate: Descent rate [m/min]. Default 20.
@@ -824,8 +883,10 @@ def plan_dive(
     :param cns_method: CNS calculation method. Default EXPONENTIAL.
     :param sac_bottom: Surface-equivalent SAC [L/min] for descent and bottom. Default 20.
     :param sac_deco: Surface-equivalent SAC [L/min] for deco stops and ascent. Default 17.
-    :param back_cylinder: Back gas cylinder. If provided, gas_usage is populated.
-    :param deco_cylinders: Deco gas cylinders, parallel to deco_gases list.
+    :param back_cylinder: **Legacy** back gas cylinder. Use ``cylinders`` instead.
+    :param deco_cylinders: **Legacy** deco gas cylinders. Use ``cylinders`` instead.
+    :param cylinders: Cylinder list, parallel to ``gases``. If provided, gas_usage
+        is populated. Cannot be combined with ``back_cylinder`` or ``deco_cylinders``.
     :param descent_stops: Optional list of (depth_m, time_min) stops to make during
         descent (e.g. S-drill at 5m). Stops are sorted by depth and must be shallower
         than the target depth. Tissue loading is computed correctly for each segment.
@@ -836,14 +897,55 @@ def plan_dive(
         Default 1440 (24 hours). Acts as a safety limit against runaway calculations.
     :returns: DiveSummary with all dive information.
     """
-    if back_gas is None:
-        back_gas = Gas(o2=21, he=0)
-    if deco_gases is None:
-        deco_gases = []
+    # --- Validate scalar inputs first (before gas list construction) ---
+    ascent_profile = _normalize_ascent_profile(ascent_rate)
+    gf_low, gf_high = _validate_inputs(
+        depth,
+        bottom_time,
+        descent_rate,
+        ascent_profile,
+        last_stop_depth,
+        sac_bottom,
+        sac_deco,
+        gf,
+        surface_pressure,
+        max_po2,
+    )
 
-    # Warn loudly if any gas contains H2 — these calculations are experimental
-    all_gases_for_check = [back_gas] + deco_gases
-    if any(g.h2 > 0.0 for g in all_gases_for_check):
+    # --- Resolve unified gas list ---
+    if gases is not None:
+        if back_gas is not None or deco_gases is not None:
+            raise ValueError(
+                "Cannot combine 'gases' with 'back_gas' or 'deco_gases'. Use one API or the other."
+            )
+        _all_gases = list(gases)
+    else:
+        # Legacy API: build unified list from back_gas + deco_gases
+        _bg = back_gas if back_gas is not None else Gas(o2=21, he=0)
+        # Ensure back gas has correct switch_depth and descent/ascent flags
+        _bg = dataclasses.replace(
+            _bg,
+            switch_depth=float(depth),
+            use_on_descent=True,
+            use_on_ascent=True,
+        )
+        _all_gases = [_bg] + (deco_gases or [])
+
+    # --- Resolve cylinder list ---
+    if cylinders is not None:
+        if back_cylinder is not None or deco_cylinders is not None:
+            raise ValueError(
+                "Cannot combine 'cylinders' with 'back_cylinder' or 'deco_cylinders'. "
+                "Use one API or the other."
+            )
+        _all_cylinders: list[Cylinder | None] = list(cylinders)
+    else:
+        _all_cylinders = ([back_cylinder] if back_cylinder is not None else []) + (
+            deco_cylinders if deco_cylinders is not None else []
+        )
+
+    # --- Warn if any gas contains H2 ---
+    if any(g.h2 > 0.0 for g in _all_gases):
         warnings.warn(
             "H2 (hydrogen) gas support is HIGHLY EXPERIMENTAL. "
             "Decompression coefficients are derived from diffusion-theory scaling of He "
@@ -854,47 +956,37 @@ def plan_dive(
             stacklevel=2,
         )
 
-    ascent_profile = _normalize_ascent_profile(ascent_rate)
+    # --- Validate gas list ---
+    _validate_gases(_all_gases, depth, surface_pressure, max_po2)
 
-    # --- Validate and resolve ---
-    gf_low, gf_high = _validate_inputs(
-        depth,
-        bottom_time,
-        descent_rate,
-        ascent_profile,
-        last_stop_depth,
-        sac_bottom,
-        sac_deco,
-        gf,
-        deco_gases,
-        surface_pressure,
-        max_po2,
+    # Determine bottom gas (deepest descent-eligible gas, used for back_gas_ascent tracking)
+    _descent_gases = [g for g in _all_gases if g.use_on_descent]
+    _back_gas = max(
+        [g for g in _descent_gases if g.switch_depth >= depth],
+        key=lambda g: g.switch_depth,
     )
+
     deco_model = _resolve_model(model, gf_low, gf_high)
 
     # --- Build state ---
+    _track_enabled = len(_all_cylinders) > 0
     state = _DiveState(
         tissues=deco_model.init(surface_pressure),
         cns_tracker=CNSTracker(method=cns_method),
         otu_tracker=OTUTracker(),
         surface_pressure=surface_pressure,
-        track_enabled=back_cylinder is not None or deco_cylinders is not None,
+        track_enabled=_track_enabled,
     )
 
-    # Cylinder setup
-    if state.track_enabled:
-        all_divegases_list = [back_gas] + (deco_gases or [])
-        all_cyls_list = ([back_cylinder] if back_cylinder else []) + (
-            deco_cylinders if deco_cylinders else []
-        )
-        if len(all_divegases_list) != len(all_cyls_list):
+    # --- Cylinder setup ---
+    if _track_enabled:
+        if len(_all_gases) != len(_all_cylinders):
             raise ValueError(
-                f"Number of gases ({len(all_divegases_list)}) does not match "
-                f"number of cylinders ({len(all_cyls_list)}). "
-                f"Provide one cylinder per gas (1 back + {len(deco_gases)} deco), "
-                f"or omit cylinders entirely."
+                f"Number of gases ({len(_all_gases)}) does not match "
+                f"number of cylinders ({len(_all_cylinders)}). "
+                f"Provide one cylinder per gas or omit cylinders entirely."
             )
-        for dg, dc in zip(all_divegases_list, all_cyls_list, strict=True):
+        for dg, dc in zip(_all_gases, _all_cylinders, strict=True):
             state.cylinders_by_label[_gas_label(dg)] = dc
         for lbl, cyl in state.cylinders_by_label.items():
             state.gas_pressure_profile[lbl] = [(0.0, round(cyl.fill_bar, 1))]
@@ -905,7 +997,7 @@ def plan_dive(
         deco_model,
         depth,
         descent_rate,
-        back_gas,
+        _all_gases,
         sac_bottom,
         descent_stops,
     )
@@ -914,15 +1006,15 @@ def plan_dive(
     bottom_duration = bottom_time - descent_time
     if bottom_duration <= 0:
         raise ValueError("Bottom time must be greater than descent time")
-    _bottom(state, deco_model, depth, bottom_duration, back_gas, sac_bottom)
+    _bottom(state, deco_model, depth, bottom_duration, _back_gas, sac_bottom)
 
     # --- Ascent ---
     stops, total_deco_time, ndl, stop_runtimes, back_gas_ascent_litres = _ascend_with_deco(
         state,
         deco_model,
         depth,
-        back_gas,
-        deco_gases,
+        _back_gas,
+        _all_gases,
         ascent_profile,
         last_stop_depth,
         sac_bottom,
@@ -940,19 +1032,11 @@ def plan_dive(
 
     # --- Build gas_usage ---
     gas_usage: dict[str, GasUsage] = {}
-    if state.track_enabled:
-        all_divegases = [back_gas] + (deco_gases or [])
-        _cyl_list: list[Cylinder | None] = []
-        if back_cylinder:
-            _cyl_list.append(back_cylinder)
-        if deco_cylinders:
-            _cyl_list.extend(deco_cylinders)
-        for i, g in enumerate(all_divegases):
+    if _track_enabled:
+        for g, cyl in zip(_all_gases, _all_cylinders, strict=True):
             lbl = _gas_label(g)
-            cyl_i: Cylinder | None = _cyl_list[i] if i < len(_cyl_list) else None
             consumed = state.gas_consumed.get(lbl, 0.0)
-            if cyl_i is not None:
-                gas_usage[lbl] = GasUsage(gas=g, cylinder=cyl_i, consumed_litres=consumed)
+            gas_usage[lbl] = GasUsage(gas=g, cylinder=cyl, consumed_litres=consumed)
 
     return DiveSummary(
         runtime=round(state.runtime, 1),

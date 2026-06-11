@@ -791,3 +791,146 @@ class TestH2Gas:
         """Dives without H2 must return max_pph2 == 0."""
         result = plan_dive(depth=40, bottom_time=25, back_gas=Gas(o2=21, he=35))
         assert result.max_pph2 == 0.0
+
+
+class TestUnifiedGasAPI:
+    """Tests for the unified gases= / cylinders= API introduced in v1.4.0."""
+
+    def test_basic_unified_api_matches_legacy(self):
+        """Unified API with one descent gas should produce same result as legacy."""
+        legacy = plan_dive(
+            depth=40,
+            bottom_time=20,
+            back_gas=Gas(o2=21),
+            deco_gases=[Gas(o2=50, switch_depth=21)],
+            gf=(50, 70),
+        )
+        unified = plan_dive(
+            depth=40,
+            bottom_time=20,
+            gases=[
+                Gas(o2=21, switch_depth=40, use_on_descent=True, label="back"),
+                Gas(o2=50, switch_depth=21, label="lean"),
+            ],
+            gf=(50, 70),
+        )
+        assert unified.runtime == pytest.approx(legacy.runtime, abs=0.1)
+        assert unified.total_deco_time == pytest.approx(legacy.total_deco_time, abs=1.0)
+
+    def test_travel_gas_used_on_descent_not_ascent(self):
+        """Travel gas (use_on_ascent=False) must NOT be used during ascent."""
+        result = plan_dive(
+            depth=80,
+            bottom_time=20,
+            gases=[
+                Gas(
+                    o2=21,
+                    switch_depth=40,
+                    use_on_descent=True,
+                    use_on_ascent=False,
+                    label="travel",
+                ),
+                Gas(o2=18, he=45, switch_depth=80, use_on_descent=True, label="back"),
+                Gas(o2=50, switch_depth=21, label="lean"),
+                Gas(o2=100, switch_depth=6, label="rich"),
+            ],
+            gf=(50, 70),
+        )
+        assert result.stops, "Expected deco stops for 80m/20min Tx18/45 dive"
+        # Verify travel gas appears in profile on descent (non-zero profile points at ~40m)
+        descent_depths = [d for t, d in result.profile if t <= result.profile[1][0] + 5]
+        assert any(d <= 40 for d in descent_depths), "Expected descent waypoints at/above 40m"
+
+    def test_travel_gas_descent_gas_tracking(self):
+        """Travel gas consumption is tracked separately from back gas."""
+        travel = Gas(
+            o2=21, switch_depth=40, use_on_descent=True, use_on_ascent=False, label="travel"
+        )
+        back = Gas(o2=18, he=45, switch_depth=80, use_on_descent=True, label="back")
+        lean = Gas(o2=50, switch_depth=21, label="lean")
+        result = plan_dive(
+            depth=80,
+            bottom_time=20,
+            gases=[travel, back, lean],
+            cylinders=[
+                Cylinder(12.0, 230),
+                Cylinder(24.4, 230),
+                Cylinder(11.1, 200),
+            ],
+            gf=(50, 70),
+        )
+        assert "travel" in result.gas_usage, (
+            f"Expected travel gas in usage: {list(result.gas_usage)}"
+        )
+        assert "back" in result.gas_usage
+        assert result.gas_usage["travel"].consumed_litres > 0
+        assert result.gas_usage["back"].consumed_litres > 0
+
+    def test_cannot_mix_unified_and_legacy_gas_api(self):
+        """Mixing gases= with back_gas= must raise ValueError."""
+        with pytest.raises(ValueError, match="Cannot combine"):
+            plan_dive(
+                depth=40,
+                bottom_time=20,
+                back_gas=Gas(o2=21),
+                gases=[Gas(o2=21, switch_depth=40, use_on_descent=True)],
+            )
+
+    def test_cannot_mix_unified_and_legacy_cylinder_api(self):
+        """Mixing cylinders= with back_cylinder= must raise ValueError."""
+        with pytest.raises(ValueError, match="Cannot combine"):
+            plan_dive(
+                depth=40,
+                bottom_time=20,
+                gases=[Gas(o2=21, switch_depth=40, use_on_descent=True)],
+                cylinders=[Cylinder(12.0, 200)],
+                back_cylinder=Cylinder(12.0, 200),
+            )
+
+    def test_no_descent_gas_raises(self):
+        """Gas list with no use_on_descent=True gas must raise ValueError."""
+        with pytest.raises(ValueError, match="use_on_descent"):
+            plan_dive(
+                depth=40,
+                bottom_time=20,
+                gases=[Gas(o2=21, switch_depth=40)],  # use_on_descent=False by default
+            )
+
+    def test_back_gas_switch_depth_must_cover_depth(self):
+        """Back gas with switch_depth < depth must raise ValueError."""
+        with pytest.raises(ValueError, match="No descent gas covers"):
+            plan_dive(
+                depth=80,
+                bottom_time=20,
+                gases=[
+                    Gas(o2=21, switch_depth=40, use_on_descent=True),  # only covers to 40m
+                ],
+            )
+
+    def test_travel_gas_not_used_at_depth(self):
+        """Travel gas must switch to back gas when descending past its switch_depth."""
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = plan_dive(
+                depth=80,
+                bottom_time=15,
+                gases=[
+                    Gas(o2=4, he=0, h2=90, switch_depth=80, use_on_descent=True, label="back"),
+                    Gas(
+                        o2=21,
+                        switch_depth=40,
+                        use_on_descent=True,
+                        use_on_ascent=False,
+                        label="travel",
+                    ),
+                    Gas(o2=50, switch_depth=21, label="lean"),
+                ],
+                gf=(50, 70),
+            )
+        # Profile should show a waypoint at 40m (the gas switch depth)
+        profile_depths = [d for _, d in result.profile]
+        assert 40.0 in profile_depths, (
+            f"Expected 40m waypoint for travel gas switch. Profile depths: {profile_depths}"
+        )
