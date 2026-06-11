@@ -49,7 +49,13 @@ class Gas:
     :param h2: Hydrogen percentage (0-100). **EXPERIMENTAL** — see warning below.
     :param n2: Nitrogen percentage (computed as 100 - o2 - he - h2).
     :param switch_depth: Depth at which to switch to this gas [m] (>= 0).
+        For ascent gases: shallowest depth at which this gas can be breathed.
+        For descent gases: deepest depth at which this gas is used on descent.
     :param label: Optional label for the gas mix.
+    :param use_on_descent: If True, this gas is eligible during descent.
+        Back gas and travel gases should set this True. Default False.
+    :param use_on_ascent: If True, this gas is eligible during ascent and deco stops.
+        All gases except pure travel gases should leave this True. Default True.
     :raises ValueError: If fractions are out of range or sum exceeds 100%.
 
     .. warning::
@@ -69,6 +75,8 @@ class Gas:
     h2: float = 0.0
     switch_depth: float = 0.0
     label: str = ""
+    use_on_descent: bool = False
+    use_on_ascent: bool = True
 
     def __post_init__(self) -> None:
         """Validate gas mix fractions."""

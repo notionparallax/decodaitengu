@@ -7,6 +7,20 @@ Policy:
 - Accepted heading formats are `## vX.Y.Z` or `## X.Y.Z`.
 - The publish workflow validates this before building/publishing.
 
+## v1.4.0
+
+- Unified gas list API: `plan_dive(gases=[...], cylinders=[...])` replaces
+  separate `back_gas` + `deco_gases` for multi-gas planning.
+- `Gas`: new `use_on_descent: bool = False` and `use_on_ascent: bool = True`
+  fields. Back/travel gases set `use_on_descent=True`; travel-only gases
+  additionally set `use_on_ascent=False`.
+- Descent now selects the richest eligible descent gas at each depth, with
+  automatic gas-switch breakpoints at each `switch_depth` boundary. Travel
+  gas (e.g. air surface to 40 m on a hypoxic H2 dive) is handled natively
+  without app-layer workarounds.
+- Legacy `back_gas` / `deco_gases` / `back_cylinder` / `deco_cylinders` API
+  remains fully backward compatible via an internal shim.
+
 ## v1.3.1
 
 - Fix #45: switch to richest eligible gas during free ascent from bottom
