@@ -163,5 +163,4 @@ GPL-3.0-or-later. See [COPYING](COPYING) for details.
 **WARNING:** This software is provided as-is with no warranty. Any diving
 using data provided by this library is at the diver's own risk.
 
-Cheers,
-gully
+![Ukiyoe print by Utagawa Kuniyoshi. The poem (substituting hentaigana and adding punctuation) reads, 競れば､長し短し､むつかしや。我慢の鼻の､を(置)き所なし Kurabureba, nagashi mijikashi, mutsukashiya. Gamanno hanano, okidokoro nashi and means something like, "If you compete, long or short, it's a problem. With a boast-worthy? nose, there's no place to put it."](https://upload.wikimedia.org/wikipedia/commons/4/48/Elephant_and_a_flying_tengu.jpg)
