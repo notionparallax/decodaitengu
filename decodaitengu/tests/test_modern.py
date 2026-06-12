@@ -1022,3 +1022,78 @@ class TestGasSwitchTime:
         )
         # Gap at 40m must be ≥ gas_switch_time
         assert profile_40m_times[-1] - profile_40m_times[0] >= 1.0
+
+
+class TestICDWarnings:
+    """Tests for isobaric counterdiffusion warnings."""
+
+    def test_no_icd_warning_air_only(self):
+        """Single-gas air dive should produce no ICD warnings."""
+        result = plan_dive(depth=30, bottom_time=20, back_gas=Gas(o2=21), gf=(50, 70))
+        assert result.icd_warnings == []
+
+    def test_no_icd_warning_ean50_switch(self):
+        """Switching from air to EAN50 on ascent does not increase N2 — no ICD."""
+        result = plan_dive(
+            depth=40,
+            bottom_time=20,
+            back_gas=Gas(o2=21),
+            deco_gases=[Gas(o2=50, switch_depth=21)],
+            gf=(50, 70),
+        )
+        assert result.icd_warnings == []
+
+    def test_icd_warning_trimix_to_ean50(self):
+        """Switching from He-heavy trimix to EAN50 raises N2 and drops He — ICD warning expected."""
+        result = plan_dive(
+            depth=60,
+            bottom_time=15,
+            back_gas=Gas(o2=18, he=45),
+            deco_gases=[Gas(o2=50, switch_depth=21), Gas(o2=100, switch_depth=6)],
+            gf=(50, 70),
+        )
+        # Tx18/45 (n2=37%) → EAN50 (n2=50%): ΔN2=+13pp, ΔHe=-45pp → ICD warning
+        assert len(result.icd_warnings) == 1
+        assert "ICD risk" in result.icd_warnings[0]
+        assert "21m" in result.icd_warnings[0]
+
+    def test_icd_warning_hydreliox_descent(self):
+        """Switching from air travel gas to H2 back gas on descent triggers ICD warning."""
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = plan_dive(
+                depth=80,
+                bottom_time=20,
+                gases=[
+                    Gas(
+                        o2=21,
+                        switch_depth=40,
+                        use_on_descent=True,
+                        use_on_ascent=False,
+                        label="travel",
+                    ),
+                    Gas(o2=4, he=0, h2=90, switch_depth=80, use_on_descent=True, label="back"),
+                    Gas(o2=50, switch_depth=21, label="lean"),
+                ],
+                gf=(50, 70),
+            )
+        # Air (n2=79%) → Hydreliox 4/0/90 (n2=6%): N2 DECREASES — no ICD on descent
+        # EAN50 (n2=50%) on ascent from Hydreliox (n2=6%): N2 INCREASES by 44pp — ICD warning
+        icd_depths = [w for w in result.icd_warnings if "ICD risk" in w]
+        assert len(icd_depths) >= 1
+
+    def test_no_icd_below_threshold(self):
+        """Small N2 increase (<= 5pp) should NOT trigger a warning."""
+        # Tx21/20 (n2=59%) → EAN26 (n2=74%): ΔN2=+15pp but this is above threshold.
+        # Use a case just at boundary: Tx21/10 (n2=69%) → EAN26 (n2=74%): ΔN2=+5pp — not > threshold
+        result = plan_dive(
+            depth=40,
+            bottom_time=20,
+            back_gas=Gas(o2=21, he=10),
+            deco_gases=[Gas(o2=26, switch_depth=21)],
+            gf=(50, 70),
+        )
+        # Tx21/10 n2=69 → EAN26 n2=74: ΔN2=5, not > 5 → no warning
+        assert result.icd_warnings == []

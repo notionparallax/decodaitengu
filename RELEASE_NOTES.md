@@ -7,6 +7,18 @@ Policy:
 - Accepted heading formats are `## vX.Y.Z` or `## X.Y.Z`.
 - The publish workflow validates this before building/publishing.
 
+## v1.4.2
+
+- **ICD warnings**: `DiveSummary` now has an `icd_warnings: list[str]` field.
+  A warning is emitted for each gas switch where N₂ increases by > 5 percentage
+  points while He or H₂ decreases — the classic isobaric counterdiffusion
+  scenario. Fires on both descent and ascent switches.
+- **Descent pause semantics corrected**: the gas-switch ritual on descent is now
+  modelled as breathing the *old* gas during the pause (the diver switches at
+  the *end* of the ritual, then immediately resumes descent on the new gas).
+  Ascent pauses are unchanged — the switch happens on arrival, and the pause
+  time is spent breathing the new gas.
+
 ## v1.4.1
 
 - Fix: ascent gas-switch pause now fires when `current_depth` (where we are)

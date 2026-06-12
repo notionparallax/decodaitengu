@@ -313,6 +313,7 @@ class _DiveState:
     track_enabled: bool = False
     surface_pressure: float = const.SURFACE_PRESSURE
     max_gas_density: float = 0.0
+    icd_warnings: list[str] = field(default_factory=list)
     max_pph2: float = 0.0
 
     def track_gas(self, g: Gas, duration: float, avg_abs_p: float, sac: float) -> None:
@@ -443,6 +444,35 @@ def _resolve_model(
         return model
 
 
+# Isobaric counterdiffusion: N2 increase that triggers a warning.
+_ICD_N2_THRESHOLD = 5.0  # percentage points
+
+
+def _check_icd(old_gas: "Gas", new_gas: "Gas", depth: float) -> str | None:
+    """Return an ICD warning string if the gas switch carries significant risk, else None.
+
+    Isobaric counterdiffusion (ICD) occurs when switching to a gas with more N2
+    while fast inert gases (He, H2) are still diffusing out of tissues. The rising
+    ambient N2 can drive supersaturation in compartments still loaded with the fast gas.
+
+    Warning fires when ALL of the following are true:
+    - depth > 6 m (surface is not a concern)
+    - N2 fraction increases by more than _ICD_N2_THRESHOLD (default 5 pp)
+    - He or H2 fraction decreases (the fast gas is being washed out)
+    """
+    if depth <= 6.0:
+        return None
+    delta_n2 = new_gas.n2 - old_gas.n2
+    delta_fast = (new_gas.he + new_gas.h2) - (old_gas.he + old_gas.h2)
+    if delta_n2 > _ICD_N2_THRESHOLD and delta_fast < 0.0:
+        return (
+            f"ICD risk at {depth:.0f}m: switching {old_gas!r} → {new_gas!r} "
+            f"increases N₂ by {delta_n2:.0f}pp while reducing He+H₂ by {-delta_fast:.0f}pp. "
+            f"Consider a slower ascent or intermediate switch gas."
+        )
+    return None
+
+
 def _descend(
     state: _DiveState,
     model: ZHL16GF,
@@ -488,19 +518,23 @@ def _descend(
         current_gas = _richest_eligible_descent_gas(descent_gases, wp_depth)
 
         # Gas switch pause (if gas changed and we're at an intermediate waypoint, not surface)
-        # Pause is breathed on the NEW gas — the diver switches, breathes new gas, then descends.
-        if prev_depth > 0.0 and current_gas is not prev_gas and gas_switch_time > 0.0:
-            switch_p = _depth_to_pressure(prev_depth, state.surface_pressure)
-            po2_sw = (current_gas.o2 / 100.0) * switch_p
-            state.tissues = model.load(state.tissues, switch_p, gas_switch_time, current_gas, 0.0)
-            state.cns_tracker.update(po2_sw, gas_switch_time)
-            state.otu_tracker.update(po2_sw, gas_switch_time)
-            if state.track_enabled:
-                state.track_gas(current_gas, gas_switch_time, switch_p, sac_bottom)
-            state.runtime += gas_switch_time
-            descent_time += gas_switch_time
-            state.snapshot(model, prev_depth, model.gf_low)
-            state.profile.append((round(state.runtime, 2), prev_depth))
+        # Ritual is performed on the OLD gas; diver switches at the END and resumes descent.
+        if prev_depth > 0.0 and current_gas is not prev_gas:
+            icd_warn = _check_icd(prev_gas, current_gas, prev_depth)
+            if icd_warn:
+                state.icd_warnings.append(icd_warn)
+            if gas_switch_time > 0.0:
+                switch_p = _depth_to_pressure(prev_depth, state.surface_pressure)
+                po2_sw = (prev_gas.o2 / 100.0) * switch_p
+                state.tissues = model.load(state.tissues, switch_p, gas_switch_time, prev_gas, 0.0)
+                state.cns_tracker.update(po2_sw, gas_switch_time)
+                state.otu_tracker.update(po2_sw, gas_switch_time)
+                if state.track_enabled:
+                    state.track_gas(prev_gas, gas_switch_time, switch_p, sac_bottom)
+                state.runtime += gas_switch_time
+                descent_time += gas_switch_time
+                state.snapshot(model, prev_depth, model.gf_low)
+                state.profile.append((round(state.runtime, 2), prev_depth))
 
         # Descend segment
         seg_time = (wp_depth - prev_depth) / descent_rate
@@ -689,23 +723,24 @@ def _ascend_with_deco(
             candidates = [b for b in (next_rate_break, next_switch) if b is not None]
             target_depth = max(candidates) if candidates else first_stop_depth
             new_gas = _richest_eligible_gas(ascent_gases, current_depth)
-            # Gas switch pause when arriving at a switch depth and the gas changes.
-            # Check current_depth (where we are) not target_depth (where we're going).
-            if (
-                new_gas is not _prev_ascent_gas
-                and gas_switch_time > 0.0
-                and current_depth in _switch_depths
-            ):
-                switch_p = _depth_to_pressure(current_depth, state.surface_pressure)
-                po2_sw = (new_gas.o2 / 100.0) * switch_p
-                state.tissues = model.load(state.tissues, switch_p, gas_switch_time, new_gas, 0.0)
-                state.cns_tracker.update(po2_sw, gas_switch_time)
-                state.otu_tracker.update(po2_sw, gas_switch_time)
-                if state.track_enabled:
-                    state.track_gas(new_gas, gas_switch_time, switch_p, sac_deco)
-                state.runtime += gas_switch_time
-                state.snapshot(model, current_depth, gf_low)
-                state.profile.append((round(state.runtime, 2), current_depth))
+            # Gas switch: ritual happens during ascent, so switch is instantaneous on arrival.
+            if new_gas is not _prev_ascent_gas and current_depth in _switch_depths:
+                icd_warn = _check_icd(_prev_ascent_gas, new_gas, current_depth)
+                if icd_warn:
+                    state.icd_warnings.append(icd_warn)
+                if gas_switch_time > 0.0:
+                    switch_p = _depth_to_pressure(current_depth, state.surface_pressure)
+                    po2_sw = (new_gas.o2 / 100.0) * switch_p
+                    state.tissues = model.load(
+                        state.tissues, switch_p, gas_switch_time, new_gas, 0.0
+                    )
+                    state.cns_tracker.update(po2_sw, gas_switch_time)
+                    state.otu_tracker.update(po2_sw, gas_switch_time)
+                    if state.track_enabled:
+                        state.track_gas(new_gas, gas_switch_time, switch_p, sac_deco)
+                    state.runtime += gas_switch_time
+                    state.snapshot(model, current_depth, gf_low)
+                    state.profile.append((round(state.runtime, 2), current_depth))
             current_gas = new_gas
             _prev_ascent_gas = current_gas
             _, pressure_factor_sum = _apply_ascent_to_state(
@@ -759,18 +794,24 @@ def _ascend_with_deco(
         if current_gas != back_gas and on_back_gas:
             on_back_gas = False
 
-        # Add gas-switch pause when the gas changes between stops
-        if current_gas is not prev_stop_gas and gas_switch_time > 0.0:
-            switch_p = abs_p_stop
-            po2_sw = (current_gas.o2 / 100.0) * switch_p
-            state.tissues = model.load(state.tissues, switch_p, gas_switch_time, current_gas, 0.0)
-            state.cns_tracker.update(po2_sw, gas_switch_time)
-            state.otu_tracker.update(po2_sw, gas_switch_time)
-            if state.track_enabled:
-                state.track_gas(current_gas, gas_switch_time, switch_p, sac_deco)
-            state.runtime += gas_switch_time
-            state.snapshot(model, stop_depth, current_gf)
-            state.profile.append((round(state.runtime, 2), stop_depth))
+        # Add gas-switch pause when the gas changes between stops (ascent: switch on arrival)
+        if current_gas is not prev_stop_gas:
+            icd_warn = _check_icd(prev_stop_gas, current_gas, stop_depth)
+            if icd_warn:
+                state.icd_warnings.append(icd_warn)
+            if gas_switch_time > 0.0:
+                switch_p = abs_p_stop
+                po2_sw = (current_gas.o2 / 100.0) * switch_p
+                state.tissues = model.load(
+                    state.tissues, switch_p, gas_switch_time, current_gas, 0.0
+                )
+                state.cns_tracker.update(po2_sw, gas_switch_time)
+                state.otu_tracker.update(po2_sw, gas_switch_time)
+                if state.track_enabled:
+                    state.track_gas(current_gas, gas_switch_time, switch_p, sac_deco)
+                state.runtime += gas_switch_time
+                state.snapshot(model, stop_depth, current_gf)
+                state.profile.append((round(state.runtime, 2), stop_depth))
         prev_stop_gas = current_gas
 
         state.max_gas_density = max(state.max_gas_density, _gas_density(current_gas, abs_p_stop))
@@ -1114,4 +1155,5 @@ def plan_dive(
         ceiling_profile=state.ceiling_profile,
         gas_pressure_profile=state.gas_pressure_profile,
         max_pph2=round(state.max_pph2, 3),
+        icd_warnings=state.icd_warnings,
     )

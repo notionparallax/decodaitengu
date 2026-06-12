@@ -283,3 +283,10 @@ class DiveSummary:
     gas_pressure_profile: dict[str, list[tuple[float, float]]] = field(default_factory=dict)
     # gas_label -> [(time_min, bar_remaining), ...]
     max_pph2: float = 0.0
+    icd_warnings: list[str] = field(default_factory=list)
+    """Isobaric counterdiffusion warnings generated during the dive.
+
+    Each entry is a human-readable string describing a gas switch that carries
+    significant ICD risk (N₂ fraction increases by >5 pp while He/H₂ decreases).
+    Empty list for dives without concerning switches.
+    """
