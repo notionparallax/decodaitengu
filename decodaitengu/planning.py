@@ -488,14 +488,15 @@ def _descend(
         current_gas = _richest_eligible_descent_gas(descent_gases, wp_depth)
 
         # Gas switch pause (if gas changed and we're at an intermediate waypoint, not surface)
+        # Pause is breathed on the NEW gas — the diver switches, breathes new gas, then descends.
         if prev_depth > 0.0 and current_gas is not prev_gas and gas_switch_time > 0.0:
             switch_p = _depth_to_pressure(prev_depth, state.surface_pressure)
-            po2_sw = (prev_gas.o2 / 100.0) * switch_p
-            state.tissues = model.load(state.tissues, switch_p, gas_switch_time, prev_gas, 0.0)
+            po2_sw = (current_gas.o2 / 100.0) * switch_p
+            state.tissues = model.load(state.tissues, switch_p, gas_switch_time, current_gas, 0.0)
             state.cns_tracker.update(po2_sw, gas_switch_time)
             state.otu_tracker.update(po2_sw, gas_switch_time)
             if state.track_enabled:
-                state.track_gas(prev_gas, gas_switch_time, switch_p, sac_bottom)
+                state.track_gas(current_gas, gas_switch_time, switch_p, sac_bottom)
             state.runtime += gas_switch_time
             descent_time += gas_switch_time
             state.snapshot(model, prev_depth, model.gf_low)
@@ -688,11 +689,12 @@ def _ascend_with_deco(
             candidates = [b for b in (next_rate_break, next_switch) if b is not None]
             target_depth = max(candidates) if candidates else first_stop_depth
             new_gas = _richest_eligible_gas(ascent_gases, current_depth)
-            # Gas switch pause when crossing a switch-depth breakpoint and gas changes
+            # Gas switch pause when arriving at a switch depth and the gas changes.
+            # Check current_depth (where we are) not target_depth (where we're going).
             if (
                 new_gas is not _prev_ascent_gas
                 and gas_switch_time > 0.0
-                and target_depth in _switch_depths
+                and current_depth in _switch_depths
             ):
                 switch_p = _depth_to_pressure(current_depth, state.surface_pressure)
                 po2_sw = (new_gas.o2 / 100.0) * switch_p
@@ -724,6 +726,7 @@ def _ascend_with_deco(
             current_depth = target_depth
     # Ensure current_gas is correct at first_stop_depth for the stop loop
     current_gas = _richest_eligible_gas(ascent_gases, first_stop_depth)
+    prev_stop_gas = current_gas
     on_back_gas = current_gas is back_gas
     state.snapshot(model, first_stop_depth, gf_low)
     state.profile.append((round(state.runtime, 2), first_stop_depth))
@@ -755,6 +758,20 @@ def _ascend_with_deco(
 
         if current_gas != back_gas and on_back_gas:
             on_back_gas = False
+
+        # Add gas-switch pause when the gas changes between stops
+        if current_gas is not prev_stop_gas and gas_switch_time > 0.0:
+            switch_p = abs_p_stop
+            po2_sw = (current_gas.o2 / 100.0) * switch_p
+            state.tissues = model.load(state.tissues, switch_p, gas_switch_time, current_gas, 0.0)
+            state.cns_tracker.update(po2_sw, gas_switch_time)
+            state.otu_tracker.update(po2_sw, gas_switch_time)
+            if state.track_enabled:
+                state.track_gas(current_gas, gas_switch_time, switch_p, sac_deco)
+            state.runtime += gas_switch_time
+            state.snapshot(model, stop_depth, current_gf)
+            state.profile.append((round(state.runtime, 2), stop_depth))
+        prev_stop_gas = current_gas
 
         state.max_gas_density = max(state.max_gas_density, _gas_density(current_gas, abs_p_stop))
         if current_gas.h2 > 0.0:

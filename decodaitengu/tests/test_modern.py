@@ -669,7 +669,8 @@ class TestSubsurfaceComparison:
             sac_deco=20,
         )
         self._check_stops(result, {9.0: 1})
-        assert result.runtime == pytest.approx(20.5, abs=0.5)
+        # Both gas switches add 1 min each: EAN50 at 21m (free ascent) + O2 at 6m (stop, no deco offset)
+        assert result.runtime == pytest.approx(22.5, abs=0.5)
 
         # The 6m breakpoint must appear as a distinct pair of profile points so
         # that the two ascent rate segments are drawn at their correct individual
@@ -934,3 +935,90 @@ class TestUnifiedGasAPI:
         assert 40.0 in profile_depths, (
             f"Expected 40m waypoint for travel gas switch. Profile depths: {profile_depths}"
         )
+
+
+class TestGasSwitchTime:
+    """Tests for gas_switch_time parameter."""
+
+    def test_gas_switch_time_increases_runtime(self):
+        """Non-zero gas_switch_time should increase runtime vs 0.0."""
+        base = plan_dive(
+            depth=50,
+            bottom_time=19,
+            back_gas=Gas(o2=21),
+            deco_gases=[Gas(o2=50, switch_depth=21), Gas(o2=100, switch_depth=6)],
+            gf=(50, 70),
+            gas_switch_time=0.0,
+        )
+        with_switch = plan_dive(
+            depth=50,
+            bottom_time=19,
+            back_gas=Gas(o2=21),
+            deco_gases=[Gas(o2=50, switch_depth=21), Gas(o2=100, switch_depth=6)],
+            gf=(50, 70),
+            gas_switch_time=1.0,
+        )
+        # Both gas switches fire: EAN50 at 21m adds 1 min net (before stops, no offset),
+        # O2 at 6m adds 1 min switch time but off-gasses 1 min of stop → net 0.
+        # Net overall: +1 min.
+        assert with_switch.runtime > base.runtime
+
+    def test_gas_switch_time_zero_matches_no_switch_time(self):
+        """gas_switch_time=0.0 should produce same result as omitting the param."""
+        default = plan_dive(depth=40, bottom_time=25, back_gas=Gas(o2=21), gf=(50, 70))
+        zero = plan_dive(
+            depth=40, bottom_time=25, back_gas=Gas(o2=21), gf=(50, 70), gas_switch_time=0.0
+        )
+        # No deco gases → no switches → same either way
+        assert default.runtime == zero.runtime
+
+    def test_descent_gas_switch_time_adds_pause(self):
+        """gas_switch_time > 0 on descent should add a pause when the gas changes."""
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            no_pause = plan_dive(
+                depth=80,
+                bottom_time=20,
+                gases=[
+                    Gas(
+                        o2=21,
+                        switch_depth=40,
+                        use_on_descent=True,
+                        use_on_ascent=False,
+                        label="travel",
+                    ),
+                    Gas(o2=4, he=0, h2=90, switch_depth=80, use_on_descent=True, label="back"),
+                    Gas(o2=50, switch_depth=21, label="lean"),
+                ],
+                gf=(50, 70),
+                gas_switch_time=0.0,
+            )
+            with_pause = plan_dive(
+                depth=80,
+                bottom_time=20,
+                gases=[
+                    Gas(
+                        o2=21,
+                        switch_depth=40,
+                        use_on_descent=True,
+                        use_on_ascent=False,
+                        label="travel",
+                    ),
+                    Gas(o2=4, he=0, h2=90, switch_depth=80, use_on_descent=True, label="back"),
+                    Gas(o2=50, switch_depth=21, label="lean"),
+                ],
+                gf=(50, 70),
+                gas_switch_time=1.0,
+            )
+        # Runtimes must differ (switch pauses affect tissue loading and thus deco)
+        assert no_pause.runtime != with_pause.runtime
+        # Descent switch pause at 40m must appear as two consecutive profile points at 40m
+        profile_40m_times = [t for t, d in with_pause.profile if d == 40.0]
+        assert len(profile_40m_times) >= 2, (
+            f"Expected at least two profile points at 40m for descent gas switch pause. "
+            f"Profile: {with_pause.profile[:20]}"
+        )
+        # Gap at 40m must be ≥ gas_switch_time
+        assert profile_40m_times[-1] - profile_40m_times[0] >= 1.0

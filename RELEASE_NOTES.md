@@ -7,6 +7,18 @@ Policy:
 - Accepted heading formats are `## vX.Y.Z` or `## X.Y.Z`.
 - The publish workflow validates this before building/publishing.
 
+## v1.4.1
+
+- Fix: ascent gas-switch pause now fires when `current_depth` (where we are)
+  is a switch depth, not `target_depth` (where we're going). Previously the
+  pause was skipped in the most common single-deco-gas case.
+- Fix: descent gas-switch pause now loads tissues with the NEW gas (the gas the
+  diver has just switched to), not the old gas.
+- Fix: gas-switch pauses now also fire at deco stop depths, not only during
+  free ascent. This means switches from back gas to EAN50 at the first stop
+  depth are correctly counted with the configured switch time.
+- Tests: added `TestGasSwitchTime` suite verifying switch-time behaviour.
+
 ## v1.4.0
 
 - Unified gas list API: `plan_dive(gases=[...], cylinders=[...])` replaces
