@@ -20,6 +20,9 @@ Policy:
   without app-layer workarounds.
 - Legacy `back_gas` / `deco_gases` / `back_cylinder` / `deco_cylinders` API
   remains fully backward compatible via an internal shim.
+- `plan_dive()`: new `gas_switch_time: float = 1.0` parameter — diver pauses this many
+  minutes at each gas switch depth (applies to both descent and ascent switches).
+  Set to 0.0 for on-the-fly switching with no stop.
 
 ## v1.3.1
 
