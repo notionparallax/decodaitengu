@@ -451,6 +451,7 @@ def _descend(
     all_gases: list[Gas],
     sac_bottom: float,
     descent_stops: list[tuple[float, float]] | None,
+    gas_switch_time: float = 1.0,
 ) -> float:
     """Execute the descent phase. Returns total descent time.
 
@@ -477,13 +478,28 @@ def _descend(
 
     prev_depth = 0.0
     descent_time = 0.0
+    prev_gas = _richest_eligible_descent_gas(descent_gases, 0.0)
 
     for wp_depth in waypoints:
         if wp_depth <= prev_depth:
             continue
 
-        # Select gas for this segment using END depth — ensures switch at correct boundary
+        # Select gas for this segment using END depth
         current_gas = _richest_eligible_descent_gas(descent_gases, wp_depth)
+
+        # Gas switch pause (if gas changed and we're at an intermediate waypoint, not surface)
+        if prev_depth > 0.0 and current_gas is not prev_gas and gas_switch_time > 0.0:
+            switch_p = _depth_to_pressure(prev_depth, state.surface_pressure)
+            po2_sw = (prev_gas.o2 / 100.0) * switch_p
+            state.tissues = model.load(state.tissues, switch_p, gas_switch_time, prev_gas, 0.0)
+            state.cns_tracker.update(po2_sw, gas_switch_time)
+            state.otu_tracker.update(po2_sw, gas_switch_time)
+            if state.track_enabled:
+                state.track_gas(prev_gas, gas_switch_time, switch_p, sac_bottom)
+            state.runtime += gas_switch_time
+            descent_time += gas_switch_time
+            state.snapshot(model, prev_depth, model.gf_low)
+            state.profile.append((round(state.runtime, 2), prev_depth))
 
         # Descend segment
         seg_time = (wp_depth - prev_depth) / descent_rate
@@ -520,6 +536,7 @@ def _descend(
             state.snapshot(model, wp_depth, model.gf_low)
             state.profile.append((round(state.runtime, 2), wp_depth))
 
+        prev_gas = current_gas
         prev_depth = wp_depth
 
     return descent_time
@@ -567,6 +584,7 @@ def _ascend_with_deco(
     sac_deco: float,
     gf_low: float,
     gf_high: float,
+    gas_switch_time: float = 1.0,
 ) -> tuple[list[DecoStop], float, float | None, dict[float, float], float]:
     """Execute ascent and deco phases.
 
@@ -658,6 +676,7 @@ def _ascend_with_deco(
     # Free ascent to first stop — step at rate-change and gas-switch breakpoints.
     if depth > first_stop_depth:
         current_depth = float(depth)
+        _prev_ascent_gas = back_gas
         while current_depth > first_stop_depth:
             next_rate_break = _next_ascent_breakpoint(
                 ascent_profile, current_depth, first_stop_depth
@@ -668,7 +687,25 @@ def _ascend_with_deco(
             )
             candidates = [b for b in (next_rate_break, next_switch) if b is not None]
             target_depth = max(candidates) if candidates else first_stop_depth
-            current_gas = _richest_eligible_gas(ascent_gases, current_depth)
+            new_gas = _richest_eligible_gas(ascent_gases, current_depth)
+            # Gas switch pause when crossing a switch-depth breakpoint and gas changes
+            if (
+                new_gas is not _prev_ascent_gas
+                and gas_switch_time > 0.0
+                and target_depth in _switch_depths
+            ):
+                switch_p = _depth_to_pressure(current_depth, state.surface_pressure)
+                po2_sw = (new_gas.o2 / 100.0) * switch_p
+                state.tissues = model.load(state.tissues, switch_p, gas_switch_time, new_gas, 0.0)
+                state.cns_tracker.update(po2_sw, gas_switch_time)
+                state.otu_tracker.update(po2_sw, gas_switch_time)
+                if state.track_enabled:
+                    state.track_gas(new_gas, gas_switch_time, switch_p, sac_deco)
+                state.runtime += gas_switch_time
+                state.snapshot(model, current_depth, gf_low)
+                state.profile.append((round(state.runtime, 2), current_depth))
+            current_gas = new_gas
+            _prev_ascent_gas = current_gas
             _, pressure_factor_sum = _apply_ascent_to_state(
                 state,
                 model,
@@ -830,6 +867,7 @@ def plan_dive(
     descent_stops: list[tuple[float, float]] | None = None,
     max_po2: float = 1.61,
     max_deco_time: float = 1440.0,
+    gas_switch_time: float = 1.0,
 ) -> DiveSummary:
     """Plan a dive and return a complete summary.
 
@@ -895,6 +933,8 @@ def plan_dive(
         conservative limits or higher for advanced configurations.
     :param max_deco_time: Maximum total decompression time [min] before raising an error.
         Default 1440 (24 hours). Acts as a safety limit against runaway calculations.
+    :param gas_switch_time: Time [min] spent pausing at each gas switch depth. Default 1.0.
+        Set to 0.0 for on-the-fly switching with no stop.
     :returns: DiveSummary with all dive information.
     """
     # --- Validate scalar inputs first (before gas list construction) ---
@@ -1000,6 +1040,7 @@ def plan_dive(
         _all_gases,
         sac_bottom,
         descent_stops,
+        gas_switch_time=gas_switch_time,
     )
 
     # --- Bottom ---
@@ -1021,6 +1062,7 @@ def plan_dive(
         sac_deco,
         gf_low,
         gf_high,
+        gas_switch_time=gas_switch_time,
     )
 
     if total_deco_time > max_deco_time:
