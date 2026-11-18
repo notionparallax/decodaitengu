@@ -7,6 +7,24 @@ Policy:
 - Accepted heading formats are `## vX.Y.Z` or `## X.Y.Z`.
 - The publish workflow validates this before building/publishing.
 
+## v1.5.0
+
+- **Gas switches on ascent are now minimum stops.** `gas_switch_time` is the
+  shortest stop made at each ascent gas switch, and it now shows up in
+  `stops`, `stop_runtimes` and `total_deco_time` (previously the pause was
+  added to runtime only, so it was invisible in the stop list and total deco
+  could go *down* as the pause got longer).
+  - At a deco stop where the gas changes, the stop lasts whichever is longer:
+    `gas_switch_time` or what deco needs.
+  - A switch above the first deco stop, or at a depth between 3 m grid stops
+    (e.g. EAN80 at 10 m), is made at its own `switch_depth` with a stop of
+    `gas_switch_time` there; deco stops stay on the 3 m grid.
+  - Fix: a switch exactly at the first stop depth was previously not detected
+    as a switch, so it got no pause.
+- **New `descent_gas_switch_time`** parameter for the descent-switch pause.
+  Default `None` keeps the old behaviour (uses `gas_switch_time`); set `0.0`
+  to switch on the fly on the way down.
+
 ## v1.4.2
 
 - **ICD warnings**: `DiveSummary` now has an `icd_warnings: list[str]` field.

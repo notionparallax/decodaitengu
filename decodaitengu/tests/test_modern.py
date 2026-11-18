@@ -1024,6 +1024,94 @@ class TestGasSwitchTime:
         assert profile_40m_times[-1] - profile_40m_times[0] >= 1.0
 
 
+_AIR_50_O2 = dict(
+    back_gas=Gas(o2=21),
+    deco_gases=[Gas(o2=50, switch_depth=21), Gas(o2=100, switch_depth=6)],
+    gf=(50, 80),
+)
+
+
+class TestGasSwitchMinimumStop:
+    """gas_switch_time is a minimum stop at ascent gas switches, recorded in stops."""
+
+    def test_switch_above_first_stop_is_recorded(self):
+        """EAN50 at 21m above a shallower first stop becomes a 21m stop of gas_switch_time."""
+        r = plan_dive(depth=40, bottom_time=25, gas_switch_time=2.0, **_AIR_50_O2)
+        assert r.stops[0].depth == 21.0
+        assert r.stops[0].time == 2.0
+        assert isinstance(r.stops[0].depth, float)
+        # Next stop is on the 3m grid with no switch, so no 18m / 15m filler
+        assert r.stops[1].depth % 3 == 0 and r.stops[1].depth < 21
+
+    def test_total_deco_is_sum_of_stops(self):
+        for gs in (0.0, 1.0, 2.0, 3.0):
+            r = plan_dive(depth=40, bottom_time=25, gas_switch_time=gs, **_AIR_50_O2)
+            assert r.total_deco_time == pytest.approx(sum(s.time for s in r.stops))
+
+    def test_no_switch_stop_when_zero(self):
+        r = plan_dive(depth=40, bottom_time=25, gas_switch_time=0.0, **_AIR_50_O2)
+        assert 21.0 not in [s.depth for s in r.stops]
+
+    def test_minimum_not_added_when_deco_needs_longer(self):
+        """O2 at 6m: deco needs more than the minimum, so the stop isn't lengthened."""
+        base = plan_dive(depth=40, bottom_time=25, gas_switch_time=1.0, **_AIR_50_O2)
+        six = {s.depth: s.time for s in base.stops}[6.0]
+        assert six > 1.0
+        # A minimum shorter than the deco need leaves the 6m stop unchanged
+        r = plan_dive(depth=40, bottom_time=25, gas_switch_time=six - 1.0, **_AIR_50_O2)
+        assert {s.depth: s.time for s in r.stops}[6.0] == six
+
+    def test_minimum_extends_short_switch_stop(self):
+        """A long minimum stretches the 6m O2 stop to at least that long."""
+        r = plan_dive(depth=40, bottom_time=25, gas_switch_time=5.0, **_AIR_50_O2)
+        assert {s.depth: s.time for s in r.stops}[6.0] >= 5.0
+
+    def test_off_grid_switch_gets_own_stop_then_grid(self):
+        """EAN80 at 10m: 10m switch stop, then the 9m deco stop stays on the grid."""
+        r = plan_dive(
+            depth=45,
+            bottom_time=30,
+            back_gas=Gas(o2=21),
+            deco_gases=[Gas(o2=50, switch_depth=21), Gas(o2=80, switch_depth=10)],
+            gf=(50, 80),
+            gas_switch_time=1.0,
+        )
+        depths = [s.depth for s in r.stops]
+        assert 10.0 in depths and 9.0 in depths
+        assert depths.index(10.0) == depths.index(9.0) - 1
+        assert {s.depth: s.time for s in r.stops}[10.0] == 1.0
+        assert depths == sorted(depths, reverse=True)
+
+    def test_switch_at_first_stop_gets_minimum(self):
+        """A switch exactly at the first stop depth is detected and gets the minimum."""
+        kw = dict(
+            depth=60,
+            bottom_time=25,
+            back_gas=Gas(o2=18, he=45),
+            deco_gases=[Gas(o2=50, switch_depth=21), Gas(o2=100, switch_depth=6)],
+            gf=(50, 80),
+        )
+        r = plan_dive(gas_switch_time=3.0, **kw)
+        assert {s.depth: s.time for s in r.stops}[21.0] >= 3.0
+
+    def test_descent_gas_switch_time_overrides(self):
+        import warnings
+
+        gases = [
+            Gas(o2=21, switch_depth=40, use_on_descent=True, use_on_ascent=False, label="travel"),
+            Gas(o2=4, he=0, h2=90, switch_depth=80, use_on_descent=True, label="back"),
+            Gas(o2=50, switch_depth=21, label="lean"),
+        ]
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            fly = plan_dive(
+                depth=80, bottom_time=20, gases=gases, gf=(50, 70), descent_gas_switch_time=0.0
+            )
+            paused = plan_dive(depth=80, bottom_time=20, gases=gases, gf=(50, 70))
+        assert len([t for t, d in fly.profile if d == 40.0]) == 1
+        assert len([t for t, d in paused.profile if d == 40.0]) >= 2
+
+
 class TestICDWarnings:
     """Tests for isobaric counterdiffusion warnings."""
 

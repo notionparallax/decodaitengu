@@ -577,6 +577,25 @@ def _descend(
     return descent_time
 
 
+def _hold_at_depth(
+    state: _DiveState,
+    model: ZHL16GF,
+    depth_m: float,
+    minutes: float,
+    gas: Gas,
+    sac: float,
+) -> None:
+    """Stay at a constant depth breathing ``gas``. Modifies state in place."""
+    p = _depth_to_pressure(depth_m, state.surface_pressure)
+    po2 = (gas.o2 / 100.0) * p
+    state.tissues = model.load(state.tissues, p, minutes, gas, 0.0)
+    state.cns_tracker.update(po2, minutes)
+    state.otu_tracker.update(po2, minutes)
+    if state.track_enabled:
+        state.track_gas(gas, minutes, p, sac)
+    state.runtime += minutes
+
+
 def _bottom(
     state: _DiveState,
     model: ZHL16GF,
@@ -708,10 +727,20 @@ def _ascend_with_deco(
     stop_runtimes: dict[float, float] = {}
     back_gas_ascent_litres = 0.0
 
+    def _record_switch_stop(stop_d: float) -> None:
+        """Hold ``gas_switch_time`` at an off-grid / pre-first-stop switch and record it."""
+        nonlocal total_deco_time
+        stop_d = float(stop_d)
+        _hold_at_depth(state, model, stop_d, gas_switch_time, current_gas, sac_deco)
+        stops.append(DecoStop(depth=stop_d, time=gas_switch_time))
+        total_deco_time += gas_switch_time
+        stop_runtimes[stop_d] = round(state.runtime, 2)
+
     # Free ascent to first stop — step at rate-change and gas-switch breakpoints.
+    # A gas switch above the first deco stop becomes a stop of ``gas_switch_time``.
+    _prev_ascent_gas = back_gas
     if depth > first_stop_depth:
         current_depth = float(depth)
-        _prev_ascent_gas = back_gas
         while current_depth > first_stop_depth:
             next_rate_break = _next_ascent_breakpoint(
                 ascent_profile, current_depth, first_stop_depth
@@ -723,22 +752,14 @@ def _ascend_with_deco(
             candidates = [b for b in (next_rate_break, next_switch) if b is not None]
             target_depth = max(candidates) if candidates else first_stop_depth
             new_gas = _richest_eligible_gas(ascent_gases, current_depth)
-            # Gas switch: ritual happens during ascent, so switch is instantaneous on arrival.
+            # Gas switch on arrival at the switch depth; the stop is breathed on the new gas.
             if new_gas is not _prev_ascent_gas and current_depth in _switch_depths:
                 icd_warn = _check_icd(_prev_ascent_gas, new_gas, current_depth)
                 if icd_warn:
                     state.icd_warnings.append(icd_warn)
+                current_gas = new_gas
                 if gas_switch_time > 0.0:
-                    switch_p = _depth_to_pressure(current_depth, state.surface_pressure)
-                    po2_sw = (new_gas.o2 / 100.0) * switch_p
-                    state.tissues = model.load(
-                        state.tissues, switch_p, gas_switch_time, new_gas, 0.0
-                    )
-                    state.cns_tracker.update(po2_sw, gas_switch_time)
-                    state.otu_tracker.update(po2_sw, gas_switch_time)
-                    if state.track_enabled:
-                        state.track_gas(new_gas, gas_switch_time, switch_p, sac_deco)
-                    state.runtime += gas_switch_time
+                    _record_switch_stop(current_depth)
                     state.snapshot(model, current_depth, gf_low)
                     state.profile.append((round(state.runtime, 2), current_depth))
             current_gas = new_gas
@@ -760,8 +781,10 @@ def _ascend_with_deco(
                 state.profile.append((round(state.runtime, 2), target_depth))
             current_depth = target_depth
     # Ensure current_gas is correct at first_stop_depth for the stop loop
+    # prev_stop_gas is the gas breathed on arrival, so a switch exactly at the
+    # first stop depth is still detected (and gets its minimum stop) below.
     current_gas = _richest_eligible_gas(ascent_gases, first_stop_depth)
-    prev_stop_gas = current_gas
+    prev_stop_gas = _prev_ascent_gas
     on_back_gas = current_gas is back_gas
     state.snapshot(model, first_stop_depth, gf_low)
     state.profile.append((round(state.runtime, 2), first_stop_depth))
@@ -794,24 +817,14 @@ def _ascend_with_deco(
         if current_gas != back_gas and on_back_gas:
             on_back_gas = False
 
-        # Add gas-switch pause when the gas changes between stops (ascent: switch on arrival)
+        # Gas switch on arrival at this stop: the stop lasts at least gas_switch_time
+        # (applied after the deco wait below, so the longer of the two wins).
+        min_stop_time = 0.0
         if current_gas is not prev_stop_gas:
             icd_warn = _check_icd(prev_stop_gas, current_gas, stop_depth)
             if icd_warn:
                 state.icd_warnings.append(icd_warn)
-            if gas_switch_time > 0.0:
-                switch_p = abs_p_stop
-                po2_sw = (current_gas.o2 / 100.0) * switch_p
-                state.tissues = model.load(
-                    state.tissues, switch_p, gas_switch_time, current_gas, 0.0
-                )
-                state.cns_tracker.update(po2_sw, gas_switch_time)
-                state.otu_tracker.update(po2_sw, gas_switch_time)
-                if state.track_enabled:
-                    state.track_gas(current_gas, gas_switch_time, switch_p, sac_deco)
-                state.runtime += gas_switch_time
-                state.snapshot(model, stop_depth, current_gf)
-                state.profile.append((round(state.runtime, 2), stop_depth))
+            min_stop_time = gas_switch_time
         prev_stop_gas = current_gas
 
         state.max_gas_density = max(state.max_gas_density, _gas_density(current_gas, abs_p_stop))
@@ -862,6 +875,15 @@ def _ascend_with_deco(
             stop_time += 1.0
             state.runtime += 1.0
 
+        if stop_time < min_stop_time:
+            extra = min_stop_time - stop_time
+            _hold_at_depth(state, model, stop_depth, extra, current_gas, sac_deco)
+            if on_back_gas:
+                back_gas_ascent_litres += (
+                    sac_bottom * extra * (abs_p_stop / state.surface_pressure)
+                )
+            stop_time += extra
+
         if stop_time > 0:
             stops.append(DecoStop(depth=stop_depth, time=stop_time))
             total_deco_time += stop_time
@@ -869,29 +891,38 @@ def _ascend_with_deco(
         state.snapshot(model, stop_depth, current_gf)
         state.profile.append((round(state.runtime, 2), stop_depth))
 
-        # Ascend 3m
-        if stop_depth <= last_stop_depth:
-            ascent_time, pressure_factor_sum = _apply_ascent_to_state(
-                state,
-                model,
-                stop_depth,
-                0.0,
-                current_gas,
-                ascent_profile,
-                sac_deco,
+        # Ascend 3m (or to the surface from the last stop). A gas switch depth
+        # between grid stops (e.g. EAN80 at 10m) is switched at its own depth,
+        # with a stop of gas_switch_time there before carrying on to the grid.
+        next_profile_depth = 0.0 if stop_depth <= last_stop_depth else stop_depth - 3.0
+        seg_from = stop_depth
+        for sw_depth in sorted(
+            (d for d in _switch_depths if next_profile_depth < d < stop_depth), reverse=True
+        ):
+            _, pressure_factor_sum = _apply_ascent_to_state(
+                state, model, seg_from, sw_depth, current_gas, ascent_profile, sac_deco
             )
-            next_profile_depth = 0.0
-        else:
-            next_profile_depth = stop_depth - 3.0
-            ascent_time, pressure_factor_sum = _apply_ascent_to_state(
-                state,
-                model,
-                stop_depth,
-                next_profile_depth,
-                current_gas,
-                ascent_profile,
-                sac_deco,
-            )
+            if on_back_gas:
+                back_gas_ascent_litres += sac_bottom * pressure_factor_sum
+            seg_from = sw_depth
+            state.snapshot(model, sw_depth, current_gf)
+            state.profile.append((round(state.runtime, 2), sw_depth))
+            new_gas = _richest_eligible_gas(ascent_gases, sw_depth)
+            if new_gas is not current_gas:
+                icd_warn = _check_icd(current_gas, new_gas, sw_depth)
+                if icd_warn:
+                    state.icd_warnings.append(icd_warn)
+                current_gas = new_gas
+                prev_stop_gas = new_gas
+                if current_gas is not back_gas:
+                    on_back_gas = False
+                if gas_switch_time > 0.0:
+                    _record_switch_stop(sw_depth)
+                    state.snapshot(model, sw_depth, current_gf)
+                    state.profile.append((round(state.runtime, 2), sw_depth))
+        _, pressure_factor_sum = _apply_ascent_to_state(
+            state, model, seg_from, next_profile_depth, current_gas, ascent_profile, sac_deco
+        )
         if on_back_gas:
             back_gas_ascent_litres += sac_bottom * pressure_factor_sum
         state.snapshot(model, next_profile_depth, next_gf)
@@ -926,6 +957,7 @@ def plan_dive(
     max_po2: float = 1.61,
     max_deco_time: float = 1440.0,
     gas_switch_time: float = 1.0,
+    descent_gas_switch_time: float | None = None,
 ) -> DiveSummary:
     """Plan a dive and return a complete summary.
 
@@ -991,8 +1023,15 @@ def plan_dive(
         conservative limits or higher for advanced configurations.
     :param max_deco_time: Maximum total decompression time [min] before raising an error.
         Default 1440 (24 hours). Acts as a safety limit against runaway calculations.
-    :param gas_switch_time: Time [min] spent pausing at each gas switch depth. Default 1.0.
-        Set to 0.0 for on-the-fly switching with no stop.
+    :param gas_switch_time: Minimum stop [min] at each gas switch on ascent. Default 1.0.
+        The switch is made at the gas's own ``switch_depth`` and recorded in ``stops``
+        (and ``total_deco_time``). If deco already needs a longer stop at that depth,
+        the longer time is used; a switch depth between 3m grid stops (or above the
+        first deco stop) gets a stop of exactly this length. Set to 0.0 for on-the-fly
+        switching with no stop.
+    :param descent_gas_switch_time: Pause [min] at each gas switch on descent, breathed
+        on the old gas. Not recorded as a deco stop. Default ``None`` uses
+        ``gas_switch_time``; set to 0.0 to switch on the fly on the way down.
     :returns: DiveSummary with all dive information.
     """
     # --- Validate scalar inputs first (before gas list construction) ---
@@ -1098,7 +1137,9 @@ def plan_dive(
         _all_gases,
         sac_bottom,
         descent_stops,
-        gas_switch_time=gas_switch_time,
+        gas_switch_time=(
+            gas_switch_time if descent_gas_switch_time is None else descent_gas_switch_time
+        ),
     )
 
     # --- Bottom ---
