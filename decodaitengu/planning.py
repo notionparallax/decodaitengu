@@ -180,7 +180,7 @@ def _next_ascent_breakpoint(
     return max(crossed) if crossed else None
 
 
-def _richest_eligible_gas(gases: list, depth: float):
+def _richest_eligible_gas(gases: list[Gas], depth: float) -> Gas:
     """Return the richest ascent-eligible gas whose switch_depth >= depth."""
     eligible = [g for g in gases if g.use_on_ascent and g.switch_depth >= depth]
     if eligible:
@@ -190,7 +190,7 @@ def _richest_eligible_gas(gases: list, depth: float):
     return max(ascent_gases, key=lambda g: g.switch_depth) if ascent_gases else gases[0]
 
 
-def _richest_eligible_descent_gas(gases: list, depth: float):
+def _richest_eligible_descent_gas(gases: list[Gas], depth: float) -> Gas:
     """Return the richest descent-eligible gas at the given depth.
 
     Uses the END depth of the descent segment to select the gas, ensuring
@@ -1069,13 +1069,14 @@ def plan_dive(
         _all_gases = [_bg] + (deco_gases or [])
 
     # --- Resolve cylinder list ---
+    _all_cylinders: list[Cylinder]
     if cylinders is not None:
         if back_cylinder is not None or deco_cylinders is not None:
             raise ValueError(
                 "Cannot combine 'cylinders' with 'back_cylinder' or 'deco_cylinders'. "
                 "Use one API or the other."
             )
-        _all_cylinders: list[Cylinder | None] = list(cylinders)
+        _all_cylinders = list(cylinders)
     else:
         _all_cylinders = ([back_cylinder] if back_cylinder is not None else []) + (
             deco_cylinders if deco_cylinders is not None else []
